@@ -26,7 +26,7 @@
     "nodemailer": "^6.9.14",
     "qrcode": "^1.5.3",
     "socket.io": "^4.7.5",
-    "uuid": "^9.0.1"
+    "uuid": "^14.0.1"
   },
   "devDependencies": {
     "jest": "^30.4.2",
