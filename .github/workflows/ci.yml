@@ -1,0 +1,196 @@
+# Continuous Integration — the quality gate.
+#
+# Runs on every push to main and every pull request. Jobs run in PARALLEL
+# (they're independent) except `e2e`, which boots the whole stack, and `ci`,
+# a single summary gate you can require in branch protection.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: # lets you run it manually from the Actions tab
+
+# If you push twice quickly, cancel the older run — saves CI minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------- backend
+  backend:
+    name: Backend tests (Jest + MongoDB)
+    runs-on: ubuntu-latest
+
+    # A throwaway MongoDB for this job only. This is what lets the INTEGRATION
+    # tests (atomic numbering under concurrency, audit logging) run for real in
+    # CI rather than being skipped.
+    services:
+      mongo:
+        image: mongo:7
+        ports: ['27017:27017']
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      # `npm ci` installs exactly what package-lock.json pins — reproducible,
+      # unlike `npm install`, which can drift.
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+        env:
+          # Tests use the service container above, so skip the in-memory
+          # mongod binary download entirely.
+          MONGOMS_DISABLE_POSTINSTALL: '1'
+
+      - name: Syntax check every source file
+        working-directory: backend
+        run: find src -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Run unit + integration tests
+        working-directory: backend
+        env:
+          TEST_MONGO_URI: mongodb://localhost:27017/queueos-ci
+          JWT_SECRET: ci_only_secret_never_used_in_production_0123456789
+        run: npm test -- --ci
+
+      - name: Audit dependencies (advisory)
+        working-directory: backend
+        continue-on-error: true # informs, doesn't block the pipeline
+        run: npm audit --audit-level=high
+
+  # --------------------------------------------------------------- frontend
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # A failing build is the most common way a frontend breaks — this catches
+      # bad imports, syntax errors and missing modules before they ship.
+      - name: Build production bundle
+        working-directory: frontend
+        run: npm run build
+
+      - name: Check the bundle was produced
+        working-directory: frontend
+        run: test -f dist/index.html && du -sh dist
+
+  # ------------------------------------------------------------- ml-service
+  ml-service:
+    name: ML service tests (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ml-service/requirements-dev.txt
+
+      - name: Install dependencies
+        working-directory: ml-service
+        run: pip install -r requirements-dev.txt
+
+      # Proves the self-learning activation gate: too little data or a model
+      # that isn't accurate on held-out data must NOT go live.
+      - name: Run tests
+        working-directory: ml-service
+        run: python -m pytest -q
+
+  # -------------------------------------------------------------------- e2e
+  # The most valuable job: builds and boots the real stack with Docker Compose,
+  # seeds it, and exercises the API the way a customer and staff member would.
+  # If this passes, the system genuinely works end to end.
+  e2e:
+    name: End-to-end (Docker Compose)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and start the whole stack
+        env:
+          JWT_SECRET: ci_e2e_secret_never_used_in_production_0123456789
+        run: docker compose up -d --build
+
+      - name: Wait for services to report healthy
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:5000/health > /dev/null 2>&1 \
+               && curl -fsS http://localhost:6000/health > /dev/null 2>&1 \
+               && curl -fsS http://localhost:8080/ > /dev/null 2>&1; then
+              echo "all services responding after ~$((i*5))s"; exit 0
+            fi
+            sleep 5
+          done
+          echo "services did not come up in time"; docker compose logs; exit 1
+
+      - name: Readiness reports dependencies up
+        run: |
+          READY=$(curl -fsS http://localhost:5000/ready)
+          echo "$READY"
+          echo "$READY" | grep -q '"ready":true'
+          echo "$READY" | grep -q '"db":true'
+
+      - name: Frontend serves runtime config and SPA routes
+        run: |
+          curl -fsS http://localhost:8080/runtime-config.js | grep -q "__CONFIG__"
+          # Deep links must fall back to index.html for the React router.
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/join/demo)" = "200"
+
+      - name: Seed the demo organization
+        run: docker compose exec -T backend npm run seed
+
+      - name: Exercise the real API (login, config, public join, call next)
+        run: bash .github/scripts/e2e-api.sh
+
+      - name: Show logs if anything failed
+        if: failure()
+        run: docker compose logs --tail 120
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  # ------------------------------------------------------------------- gate
+  # One job that succeeds only if everything above did. Require THIS in branch
+  # protection instead of listing every job by name.
+  ci:
+    name: CI passed
+    runs-on: ubuntu-latest
+    needs: [backend, frontend, ml-service, e2e]
+    if: always()
+    steps:
+      - name: Verify no job failed
+        run: |
+          echo "backend=${{ needs.backend.result }}"
+          echo "frontend=${{ needs.frontend.result }}"
+          echo "ml-service=${{ needs.ml-service.result }}"
+          echo "e2e=${{ needs.e2e.result }}"
+          [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "false" ]

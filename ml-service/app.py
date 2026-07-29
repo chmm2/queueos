@@ -24,7 +24,9 @@ from pydantic import BaseModel, Field
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 
-MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
+# Where trained per-org models are persisted. Overridable so tests can use a
+# temp dir and deployments can point at a mounted volume.
+MODEL_DIR = os.environ.get("MODEL_DIR") or os.path.join(os.path.dirname(__file__), "models")
 os.makedirs(MODEL_DIR, exist_ok=True)
 
 # Activation gate: a model only goes live once it has learned from enough real

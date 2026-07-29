@@ -1,5 +1,8 @@
 # QueueOS — Multi-Tenant Queue-as-a-Service Platform
 
+[![CI](https://github.com/chmm2/queueos/actions/workflows/ci.yml/badge.svg)](https://github.com/chmm2/queueos/actions/workflows/ci.yml)
+[![CD](https://github.com/chmm2/queueos/actions/workflows/cd.yml/badge.svg)](https://github.com/chmm2/queueos/actions/workflows/cd.yml)
+
 A production-style, **multi-tenant** queue management platform that any
 business — hospital, bank, restaurant, government office, pharmacy, salon —
 can sign up for and run its own queues in minutes. Every industry is
@@ -267,6 +270,34 @@ docker run -d --name qtest -p 27019:27017 mongo:7
 TEST_MONGO_URI=mongodb://localhost:27019/queue-test npm test
 docker rm -f qtest
 ```
+
+The ML service has its own suite proving the self-learning activation gate:
+
+```bash
+cd ml-service
+pip install -r requirements-dev.txt
+python -m pytest -q          # 10 tests
+```
+
+## CI/CD
+
+Every push and pull request runs the pipeline in `.github/workflows/ci.yml`:
+
+| Job | What it proves |
+|---|---|
+| `backend` | Jest unit + integration tests against a real MongoDB service container |
+| `frontend` | The production bundle still builds |
+| `ml-service` | pytest on the ETA activation gate and request validation |
+| `e2e` | Boots the entire stack with Docker Compose, seeds it, and exercises the real API — login, QR join, call-next, illegal transitions, and tenant isolation |
+
+On a green run against `main`, `cd.yml` builds all three images and publishes
+them to GitHub Container Registry tagged `latest` and the commit SHA (so any
+deploy is traceable and rollback is just redeploying an earlier SHA), then
+optionally triggers a hosting deploy.
+
+**[CI-CD.md](CI-CD.md) explains every part of the pipeline** — service
+containers, the `workflow_run` conclusion check, build matrices, layer caching,
+and least-privilege token permissions.
 
 ## Roadmap / next steps
 

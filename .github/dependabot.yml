@@ -1,0 +1,36 @@
+# Dependabot opens pull requests when dependencies fall behind or have security
+# advisories. Because CI runs on every PR, each update arrives already tested —
+# that combination is what makes dependency upkeep safe instead of scary.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /backend
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      backend-minor-and-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      frontend-minor-and-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: /ml-service
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 3
+
+  # Keeps the Actions themselves current (they get security fixes too).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+
+  - package-ecosystem: docker
+    directories: [/backend, /frontend, /ml-service]
+    schedule: { interval: weekly }
