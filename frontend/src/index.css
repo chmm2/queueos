@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---- Global product polish ------------------------------------------- */
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+  background-color: #f4f5f9;
+  color: #232734;
+}
+
+::selection {
+  background: rgba(79, 82, 224, 0.18);
+}
+
+/* Slim, unobtrusive scrollbars (WebKit) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cdd2dd;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: #9aa1b2;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Inputs: consistent focus treatment everywhere */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible {
+  outline: 2px solid rgba(79, 82, 224, 0.55);
+  outline-offset: 1px;
+}
+
+/* Number-heavy UI reads better with lining tabular figures */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}

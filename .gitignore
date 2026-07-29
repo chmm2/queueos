@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+*.log
+__pycache__/
+*.joblib
+
+# runtime / local
+ml-service/models/
+*.local

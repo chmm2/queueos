@@ -1,0 +1,71 @@
+# One-command local/prod-style deployment of the whole platform:
+#   mongo  ·  ml-service (FastAPI)  ·  backend (Node/Express + Socket.IO)  ·  frontend (nginx)
+#
+#   docker compose up --build
+#   docker compose exec backend npm run seed   # create the demo org + logins
+#
+# Then open http://localhost:8080
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ml-service:
+    build: ./ml-service
+    restart: unless-stopped
+    volumes:
+      - ml_models:/app/models   # per-org learned models persist across restarts
+    ports:
+      - "6000:6000"
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+      ml-service:
+        condition: service_started
+    environment:
+      PORT: 5000
+      MONGO_URI: mongodb://mongo:27017/queue-platform
+      ML_SERVICE_URL: http://ml-service:6000/predict
+      # Dev default so `docker compose up` just works. OVERRIDE in production:
+      #   export JWT_SECRET="$(openssl rand -hex 32)"  (or set it in a .env file)
+      JWT_SECRET: ${JWT_SECRET:-local_dev_only_secret_change_before_deploy_0f9a2c}
+      JWT_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 30d
+      CLIENT_URL: ${CLIENT_URL:-http://localhost:8080}
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:8080}
+      RECALL_WINDOW_SECONDS: 300
+      NODE_ENV: production
+      # WhatsApp / SMS (optional) — set these to enable Twilio messaging.
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_SMS_FROM: ${TWILIO_SMS_FROM:-}
+      TWILIO_WHATSAPP_FROM: ${TWILIO_WHATSAPP_FROM:-}
+    ports:
+      - "5000:5000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:5000/api}
+        VITE_SOCKET_URL: ${VITE_SOCKET_URL:-http://localhost:5000}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
+volumes:
+  mongo_data:
+  ml_models:

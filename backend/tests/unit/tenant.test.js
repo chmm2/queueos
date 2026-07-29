@@ -1,0 +1,51 @@
+const { scoped, assertSameOrg } = require('../../src/middleware/tenant');
+const { terminologyFor } = require('../../src/config/terminology');
+
+/**
+ * Tenant isolation is the core multi-tenant guarantee. These pin the helpers
+ * that every route relies on.
+ */
+describe('tenant isolation helpers', () => {
+  test('scoped() injects the caller org into any filter', () => {
+    const req = { orgId: 'org1' };
+    expect(scoped(req, { status: 'waiting' })).toEqual({ status: 'waiting', organization: 'org1' });
+  });
+
+  test('assertSameOrg rejects a cross-tenant document as 404 (no existence leak)', () => {
+    const req = { orgId: 'org1' };
+    let code = null;
+    const res = { status: (c) => { code = c; return res; }, json: () => res };
+    const ok = assertSameOrg(req, res, { organization: { toString: () => 'org2' } });
+    expect(ok).toBe(false);
+    expect(code).toBe(404); // deliberately 404, not 403
+  });
+
+  test('assertSameOrg accepts a same-tenant document', () => {
+    const req = { orgId: 'org1' };
+    const res = { status: () => res, json: () => res };
+    expect(assertSameOrg(req, res, { organization: { toString: () => 'org1' } })).toBe(true);
+  });
+
+  test('a missing document is a 404', () => {
+    const req = { orgId: 'org1' };
+    let code = null;
+    const res = { status: (c) => { code = c; return res; }, json: () => res };
+    expect(assertSameOrg(req, res, null)).toBe(false);
+    expect(code).toBe(404);
+  });
+});
+
+describe('industry-adaptive terminology', () => {
+  test('hospital speaks Rooms / Departments / Patients', () => {
+    const t = terminologyFor('hospital');
+    expect(t.counter).toBe('Room');
+    expect(t.service).toBe('Department');
+    expect(t.customer).toBe('Patient');
+  });
+
+  test('an unknown industry falls back to neutral words', () => {
+    const t = terminologyFor('spaceport');
+    expect(t.counter).toBe('Counter');
+    expect(t.customer).toBe('Customer');
+  });
+});
