@@ -10,7 +10,7 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM nginx:1.27-alpine
+FROM nginx:1.31-alpine
 
 # Listen port is templated so the container honours a platform-injected PORT
 # (Render/Fly/etc.); defaults to 80. Only PORT is substituted, so nginx vars
