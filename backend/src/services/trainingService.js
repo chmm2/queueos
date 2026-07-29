@@ -1,8 +1,9 @@
 const axios = require('axios');
 const Token = require('../models/Token');
 const ModelState = require('../models/ModelState');
+const { withScheme } = require('../config/urls');
 
-const ML_BASE = (process.env.ML_SERVICE_URL || 'http://localhost:6000/predict').replace(/\/predict$/, '');
+const ML_BASE = withScheme(process.env.ML_SERVICE_URL || 'http://localhost:6000/predict').replace(/\/predict$/, '');
 const TRAIN_TIMEOUT_MS = Number(process.env.ML_TRAIN_TIMEOUT_MS) || 30000;
 
 /**

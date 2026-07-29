@@ -1,7 +1,42 @@
 # Deploying QueueOS as a real website
 
-Two proven paths. Path A is one server + one domain (cheapest, most control).
-Path B is managed services (no server admin, free tiers to start).
+Fastest way to a shareable public URL (free): the **Render blueprint** below.
+Prefer your own server/domain? Skip to **Path A** (VPS).
+
+---
+
+## Fastest — Render blueprint + MongoDB Atlas (free, ~10 min)
+
+The repo ships a `render.yaml` that defines all three services (ML, API,
+frontend). Cross-service URLs and the JWT secret are wired automatically — the
+**only** value you paste is the database connection string.
+
+**Step 1 — free database (MongoDB Atlas).**
+1. Sign up at mongodb.com/atlas → create a free **M0** cluster.
+2. Database Access → add a user (username + password).
+3. Network Access → allow `0.0.0.0/0` (any IP), so Render can connect.
+4. Connect → Drivers → copy the connection string. It looks like
+   `mongodb+srv://USER:PASS@cluster0.xxxx.mongodb.net/queueos`
+   (add `/queueos` before the `?` to name the database).
+
+**Step 2 — deploy on Render.**
+1. Sign up at render.com and connect your GitHub.
+2. **New → Blueprint** → pick the `queueos` repo → Apply.
+3. Render reads `render.yaml` and creates `queueos-ml`, `queueos-api`,
+   `queueos-web`. When it asks for **MONGO_URI** (on `queueos-api`), paste the
+   Atlas string from Step 1.
+4. Wait for all three to go live (first build ~5 min; free services cold-start
+   after idle).
+
+**Step 3 — seed a demo (optional).**
+On the `queueos-api` service → **Shell** tab:
+```bash
+npm run seed
+```
+Then open the `queueos-web` URL → sign in with the **Admin** demo button.
+
+> Free services sleep after ~15 min idle and cold-start on the next request —
+> fine for a portfolio demo. Upgrade a service to a paid plan for always-on.
 
 ---
 

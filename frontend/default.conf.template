@@ -1,0 +1,19 @@
+server {
+  # ${PORT} is substituted at container start (nginx envsubst). Defaults to 80
+  # locally; hosting platforms inject their own port.
+  listen ${PORT};
+  server_name _;
+  root /usr/share/nginx/html;
+  index index.html;
+
+  # SPA fallback: client-side routes (/join/..., /board/..., /t/...) all resolve
+  # to index.html so React Router can handle them.
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+
+  location ~* \.(?:css|js|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
+    expires 7d;
+    add_header Cache-Control "public";
+  }
+}

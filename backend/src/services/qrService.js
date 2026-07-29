@@ -1,7 +1,8 @@
 const QRCode = require('qrcode');
 const { signQrToken } = require('./tokenService');
+const { withScheme } = require('../config/urls');
 
-const PUBLIC_URL = process.env.PUBLIC_WEB_URL || 'http://localhost:5173';
+const PUBLIC_URL = withScheme(process.env.PUBLIC_WEB_URL || 'http://localhost:5173');
 
 /**
  * Rotating branch join QR. The QR encodes a URL to the public join page plus

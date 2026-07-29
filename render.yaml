@@ -1,0 +1,59 @@
+# Render blueprint — deploys the whole platform from this repo.
+#
+# One-time setup (see DEPLOYMENT.md for the click-by-click):
+#   1. Create a free MongoDB Atlas cluster and copy its connection string.
+#   2. On render.com: New > Blueprint, pick this repo.
+#   3. When prompted, paste the Atlas string into MONGO_URI (the only manual
+#      value — everything else, including cross-service URLs and the JWT secret,
+#      is wired automatically).
+#
+# Three services: the FastAPI ML model, the Node/Express API + Socket.IO, and
+# the React frontend (nginx). All on the free plan (they sleep when idle).
+services:
+  - type: web
+    name: queueos-ml
+    runtime: docker
+    plan: free
+    rootDir: ml-service
+    healthCheckPath: /health
+
+  - type: web
+    name: queueos-api
+    runtime: docker
+    plan: free
+    rootDir: backend
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true          # Render generates a strong secret
+      - key: MONGO_URI
+        sync: false                  # <-- you paste your Atlas connection string
+      - key: ML_SERVICE_URL
+        fromService:
+          type: web
+          name: queueos-ml
+          property: host             # backend prepends https:// automatically
+      - key: CLIENT_URL
+        fromService:
+          type: web
+          name: queueos-web
+          property: host
+      - key: PUBLIC_WEB_URL
+        fromService:
+          type: web
+          name: queueos-web
+          property: host
+
+  - type: web
+    name: queueos-web
+    runtime: docker
+    plan: free
+    rootDir: frontend
+    envVars:
+      - key: API_HOST                # entrypoint builds https://<host>/api + socket URL
+        fromService:
+          type: web
+          name: queueos-api
+          property: host

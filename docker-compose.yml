@@ -57,12 +57,14 @@ services:
   frontend:
     build:
       context: ./frontend
-      args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:5000/api}
-        VITE_SOCKET_URL: ${VITE_SOCKET_URL:-http://localhost:5000}
     restart: unless-stopped
     depends_on:
       - backend
+    environment:
+      # Injected into the page at container start (runtime config) — the browser
+      # talks to the backend on the host, so these are localhost URLs.
+      API_URL: ${VITE_API_URL:-http://localhost:5000/api}
+      SOCKET_URL: ${VITE_SOCKET_URL:-http://localhost:5000}
     ports:
       - "8080:80"
 

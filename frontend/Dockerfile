@@ -5,18 +5,25 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
-# API/socket URLs are baked in at build time (Vite env). Override via
-# --build-arg for a real deployment.
-ARG VITE_API_URL=http://localhost:5000/api
-ARG VITE_SOCKET_URL=http://localhost:5000
-ENV VITE_API_URL=$VITE_API_URL
-ENV VITE_SOCKET_URL=$VITE_SOCKET_URL
-
+# API/socket URLs are provided at RUNTIME (see docker-entrypoint.sh), so the
+# same built image works against any backend without rebuilding.
 COPY . .
 RUN npm run build
 
 FROM nginx:1.27-alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Listen port is templated so the container honours a platform-injected PORT
+# (Render/Fly/etc.); defaults to 80. Only PORT is substituted, so nginx vars
+# like $uri are left untouched.
+ENV PORT=80
+ENV NGINX_ENVSUBST_FILTER=PORT
+COPY default.conf.template /etc/nginx/templates/default.conf.template
+
 COPY --from=build /app/dist /usr/share/nginx/html
+
+# Writes runtime-config.js from env vars before nginx starts.
+COPY docker-entrypoint.sh /docker-entrypoint.d/40-runtime-config.sh
+RUN chmod +x /docker-entrypoint.d/40-runtime-config.sh
+
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+# Inherit the base image's ENTRYPOINT (runs /docker-entrypoint.d/*) and CMD.

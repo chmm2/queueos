@@ -30,7 +30,8 @@ validateEnv(); // refuse to boot in an unsafe/misconfigured state
 const app = express();
 const server = http.createServer(app);
 
-const CLIENT_URL = process.env.CLIENT_URL || '*';
+const { withScheme } = require('./config/urls');
+const CLIENT_URL = withScheme(process.env.CLIENT_URL || '*');
 const io = new Server(server, { cors: { origin: CLIENT_URL, methods: ['GET', 'POST'] } });
 
 app.set('trust proxy', 1); // correct client IPs behind a reverse proxy (rate limiting)
