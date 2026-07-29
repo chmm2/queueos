@@ -1,5 +1,5 @@
 # Backend API + Socket.IO server
-FROM node:20-alpine
+FROM node:26-alpine
 
 # tini gives us proper signal handling (SIGTERM -> graceful shutdown).
 RUN apk add --no-cache tini wget
