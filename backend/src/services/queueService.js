@@ -1,10 +1,10 @@
 const Token = require('../models/Token');
 const Branch = require('../models/Branch');
-const Service = require('../models/Service');
+const Department = require('../models/Department');
 const Counter = require('../models/Counter');
 const AuditLog = require('../models/AuditLog');
 const { nextTokenNumber } = require('./sequenceService');
-const { predictEta, recalcServiceEtas, openCounterCount } = require('./etaService');
+const { predictEta, recalcDepartmentEtas, openCounterCount } = require('./etaService');
 const { generateTokenQr } = require('./qrService');
 const { signSession } = require('./tokenService');
 const { notify } = require('./notificationService');
@@ -13,15 +13,16 @@ const { randomUUID } = require('crypto');
 
 /**
  * Single source of truth for issuing a token and calling the next one.
- * Both the staff console (routes/tokens.js) and the public QR-join flow
- * (routes/public.js) go through here, so numbering, ETA, QR, audit and
- * real-time broadcast behave identically no matter who issued the token.
+ * Both the staff console and the public QR-join flow go through here, so
+ * numbering, ETA, QR, audit and real-time broadcast behave identically no
+ * matter who issued the token.
  */
 
 async function issueToken({
   organization,
   branchId,
-  serviceId,
+  departmentId,
+  roomId = null,
   source = 'walk-in',
   isPriority = false,
   customerName = null,
@@ -30,31 +31,31 @@ async function issueToken({
   user = null,
   actorId = null,
 }) {
-  const [branch, service] = await Promise.all([
+  const [branch, department] = await Promise.all([
     Branch.findById(branchId),
-    Service.findById(serviceId),
+    Department.findById(departmentId),
   ]);
   if (!branch) throw Object.assign(new Error('Branch not found'), { statusCode: 404 });
-  if (!service) throw Object.assign(new Error('Service not found'), { statusCode: 404 });
+  if (!department) throw Object.assign(new Error('Department not found'), { statusCode: 404 });
 
   const tokenNumber = await nextTokenNumber({
     organization,
     branch: branch._id,
-    service: service._id,
-    prefix: service.tokenPrefix,
+    department: department._id,
+    prefix: department.tokenPrefix,
     timezone: branch.timezone,
   });
 
-  // Position = how many are already waiting for this service + this one.
+  // Position = how many are already waiting for this department + this one.
   const ahead = await Token.countDocuments({
     branch: branch._id,
-    service: service._id,
+    department: department._id,
     status: 'waiting',
   });
-  const priority = isPriority || service.queueType === 'vip' || service.queueType === 'emergency';
-  const openCounters = await openCounterCount(branch._id);
+  const priority = isPriority || department.queueType === 'vip' || department.queueType === 'emergency';
+  const openCounters = await openCounterCount(branch._id, department._id);
   const queuePosition = ahead + 1;
-  const avgServiceSeconds = service.avgServiceTimeSeconds;
+  const avgServiceSeconds = department.avgServiceTimeSeconds;
   const { etaSeconds, source: etaSource } = await predictEta({
     organization,
     queuePosition,
@@ -67,7 +68,8 @@ async function issueToken({
   const token = await Token.create({
     organization,
     branch: branch._id,
-    service: service._id,
+    department: department._id,
+    room: roomId,
     tokenNumber,
     source,
     isPriority: priority,
@@ -93,42 +95,48 @@ async function issueToken({
     actor: actorId,
     action: 'TOKEN_ISSUED',
     toStatus: 'waiting',
-    metadata: { source, isPriority: priority, service: service.name },
+    metadata: { source, isPriority: priority, department: department.name },
   });
 
-  // Fire notification off the critical path.
   notify(
     { ...token.toObject(), organization, branchName: branch.name, customerEmail },
     'issued'
   ).catch(() => {});
 
-  emitQueueUpdate(branch._id, { type: 'issued', tokenId: token._id, service: service._id });
+  emitQueueUpdate(branch._id, { type: 'issued', tokenId: token._id, department: department._id });
 
   return {
     token,
     sessionToken,
-    position: ahead + 1,
-    serviceName: service.name,
+    position: queuePosition,
+    departmentName: department.name,
     branchName: branch.name,
   };
 }
 
 /**
  * Race-safe "call next": atomically claims the highest-priority waiting token
- * among the counter's services and moves it to `serving`. The conditional
- * update ({ status: 'waiting' }) guarantees two staff can't grab the same
- * token — the second claim simply finds nothing and retries.
+ * among the departments this counter handles. The conditional update
+ * ({ status: 'waiting' }) guarantees two staff can't grab the same token —
+ * the second claim simply finds nothing and retries.
  */
 async function callNext({ counter, actorId }) {
-  const services = counter.services && counter.services.length ? counter.services : null;
+  // A counter with no explicit departments serves everything in its room.
+  let departmentIds = counter.departments && counter.departments.length ? counter.departments : null;
+  if (!departmentIds) {
+    const Room = require('../models/Room');
+    const room = await Room.findById(counter.room).select('departments');
+    departmentIds = room?.departments || [];
+  }
+  if (!departmentIds.length) return null;
+
   const baseFilter = {
     branch: counter.branch,
     organization: counter.organization,
     status: 'waiting',
-    ...(services ? { service: { $in: services } } : {}),
+    department: { $in: departmentIds },
   };
 
-  // Try a few candidates in priority/FIFO order in case of contention.
   for (let attempt = 0; attempt < 5; attempt += 1) {
     // eslint-disable-next-line no-await-in-loop
     const candidate = await Token.findOne(baseFilter).sort({ isPriority: -1, issuedAt: 1 });
@@ -154,7 +162,7 @@ async function callNext({ counter, actorId }) {
         action: 'TOKEN_SERVING',
         fromStatus: 'waiting',
         toStatus: 'serving',
-        metadata: { counter: counter.name },
+        metadata: { counter: counter.name, counterCode: counter.code },
       }),
     ]);
 
@@ -162,16 +170,17 @@ async function callNext({ counter, actorId }) {
       tokenNumber: claimed.tokenNumber,
       counterId: counter._id,
       counterName: counter.name,
+      counterCode: counter.code,
+      roomId: counter.room,
     });
 
-    // Tell the customer it's their turn (WhatsApp/SMS/email — off the hot path).
     notify(
-      { ...claimed.toObject(), organization: counter.organization, counterName: counter.name },
+      { ...claimed.toObject(), organization: counter.organization, counterName: counter.code || counter.name },
       'your_turn'
     ).catch(() => {});
 
     // eslint-disable-next-line no-await-in-loop
-    await recalcServiceEtas(counter.branch, claimed.service);
+    await recalcDepartmentEtas(counter.branch, claimed.department);
     return claimed;
   }
   return null;

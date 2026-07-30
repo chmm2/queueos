@@ -36,16 +36,17 @@ describe('tenant isolation helpers', () => {
 });
 
 describe('industry-adaptive terminology', () => {
-  test('hospital speaks Rooms / Departments / Patients', () => {
-    const t = terminologyFor('hospital');
-    expect(t.counter).toBe('Room');
-    expect(t.service).toBe('Department');
-    expect(t.customer).toBe('Patient');
+  // Structural names (Branch / Department / Room / Counter) are deliberately
+  // fixed. Only what an org calls the person in the queue varies.
+  test('a hospital calls them Patients, a restaurant Guests', () => {
+    expect(terminologyFor('hospital').customer).toBe('Patient');
+    expect(terminologyFor('restaurant').customer).toBe('Guest');
+    expect(terminologyFor('restaurant').token).toBe('Order');
   });
 
   test('an unknown industry falls back to neutral words', () => {
     const t = terminologyFor('spaceport');
-    expect(t.counter).toBe('Counter');
     expect(t.customer).toBe('Customer');
+    expect(t.token).toBe('Token');
   });
 });

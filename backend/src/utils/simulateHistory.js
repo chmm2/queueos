@@ -14,7 +14,7 @@ const mongoose = require('mongoose');
 const connectDB = require('../config/db');
 const Organization = require('../models/Organization');
 const Branch = require('../models/Branch');
-const Service = require('../models/Service');
+const Department = require('../models/Department');
 const Token = require('../models/Token');
 
 function rand(min, max) { return min + Math.random() * (max - min); }
@@ -27,14 +27,14 @@ async function run() {
   const org = await Organization.findOne({ slug: 'demo-city-clinic' });
   if (!org) throw new Error('Run `npm run seed` first.');
   const branch = await Branch.findOne({ organization: org._id });
-  const service = await Service.findOne({ organization: org._id, branch: branch._id });
+  const department = await Department.findOne({ organization: org._id, branch: branch._id });
 
   const docs = [];
   let seq = 900;
   for (let i = 0; i < count; i += 1) {
     const queuePosition = randint(1, 16);
     const openCounters = randint(1, 3);
-    const avgServiceSeconds = service.avgServiceTimeSeconds || 300;
+    const avgServiceSeconds = department.avgServiceTimeSeconds || 300;
     const hour = randint(8, 18);
     const day = randint(0, 6);
 
@@ -55,7 +55,7 @@ async function run() {
     docs.push({
       organization: org._id,
       branch: branch._id,
-      service: service._id,
+      department: department._id,
       tokenNumber: `H-${seq++}`,
       source: 'walk-in',
       isPriority,

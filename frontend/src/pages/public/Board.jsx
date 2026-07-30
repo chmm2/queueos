@@ -6,16 +6,16 @@ import publicApi from '../../api/publicClient';
  * Public wall-display board — the screen in a waiting area. Scopeable so each
  * physical area has its OWN screen:
  *   /board/:branchId               -> whole branch
- *   /board/:branchId?zone=<id>     -> just that zone (e.g. Pharmacy)
- *   /board/:branchId?service=<id>  -> a single service
+ *   /board/:branchId?room=<id>       -> just that room (e.g. Pharmacy)
+ *   /board/:branchId?department=<id> -> a single department
  * Dark, high-contrast, large type — built for TVs.
  */
 export default function Board() {
   const { branchId } = useParams();
   const [params] = useSearchParams();
   const scope = new URLSearchParams();
-  if (params.get('zone')) scope.set('zone', params.get('zone'));
-  if (params.get('service')) scope.set('service', params.get('service'));
+  if (params.get('room')) scope.set('room', params.get('room'));
+  if (params.get('department')) scope.set('department', params.get('department'));
   const scopeStr = scope.toString();
 
   const [data, setData] = useState(null);
@@ -65,13 +65,13 @@ export default function Board() {
         </div>
       </div>
 
-      {/* One panel per service in scope */}
+      {/* One panel per department in scope */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-[1.6vw] flex-1 content-start">
-        {data.services.length === 0 && <p className="text-[1.4vw] text-slate-500">No services configured for this area.</p>}
-        {data.services.map((s) => (
-          <div key={s.service} className="rounded-[1.2vw] border border-white/10 bg-white/[0.03] p-[1.8vw]">
+        {data.departments.length === 0 && <p className="text-[1.4vw] text-slate-500">No departments configured for this area.</p>}
+        {data.departments.map((s) => (
+          <div key={s.department} className="rounded-[1.2vw] border border-white/10 bg-white/[0.03] p-[1.8vw]">
             <div className="flex items-center justify-between mb-[1.6vh]">
-              <p className="text-[1.4vw] font-semibold">{s.service}</p>
+              <p className="text-[1.4vw] font-semibold">{s.department}</p>
               <p className="text-[1vw] text-slate-400"><span className="text-slate-200 font-bold tnum">{s.waiting}</span> waiting</p>
             </div>
             {s.nowServing.length === 0 ? (

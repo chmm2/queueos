@@ -1,27 +1,14 @@
 import { useAuthStore } from '../store/authStore';
 
 /**
- * Industry-adaptive vocabulary for the UI. Reads the terminology the backend
- * seeded for this org (Room / Station / Window / Counter, Patient / Guest /
- * Client / Customer, ...) so every screen speaks the org's language.
- * Falls back to generic words if the org hasn't loaded yet.
+ * What this organization calls the person in the queue (Patient / Guest /
+ * Client / Applicant). Structural names — Branch, Department, Room, Counter —
+ * are intentionally fixed everywhere, because they're now distinct entities
+ * and relabelling them per industry would obscure the hierarchy.
  */
-const FALLBACK = {
-  counter: 'Counter',
-  counterPlural: 'Counters',
-  service: 'Service',
-  servicePlural: 'Services',
-  customer: 'Customer',
-  customerPlural: 'Customers',
-  token: 'Token',
-};
+const FALLBACK = { customer: 'Customer', customerPlural: 'Customers', token: 'Token' };
 
 export function useTerms() {
   const org = useAuthStore((s) => s.organization);
   return { ...FALLBACK, ...(org?.terminology || {}) };
-}
-
-// Non-hook access for places that aren't React components.
-export function getTerms() {
-  return { ...FALLBACK, ...(useAuthStore.getState().organization?.terminology || {}) };
 }

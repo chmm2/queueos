@@ -3,14 +3,14 @@ const rateLimit = require('express-rate-limit');
 const { body, validationResult } = require('express-validator');
 const Organization = require('../models/Organization');
 const Branch = require('../models/Branch');
-const Service = require('../models/Service');
+const Department = require('../models/Department');
 const Counter = require('../models/Counter');
-const Zone = require('../models/Zone');
+const Room = require('../models/Room');
 const Token = require('../models/Token');
 const AuditLog = require('../models/AuditLog');
 const { verify } = require('../services/tokenService');
 const { issueToken } = require('../services/queueService');
-const { recalcServiceEtas } = require('../services/etaService');
+const { recalcDepartmentEtas } = require('../services/etaService');
 const { requestOtp, verifyOtp } = require('../services/otpService');
 const { emitQueueUpdate } = require('../sockets');
 
@@ -33,23 +33,23 @@ function distanceMeters(a, b) {
 }
 
 /**
- * Resolve which services are in scope for a scan/screen: a single service, a
- * zone's services, or (default) the whole branch. This is what makes each
- * physical area — Consultation, Pharmacy — its own QR and its own screen.
+ * Resolve which departments are in scope for a scan or a screen: a single
+ * department, a room's departments, or (default) the whole branch. This is
+ * what makes the Registration room's QR and TV show only Registration.
  */
-async function scopeServices(branchId, { zone, service }) {
-  if (service) {
-    const s = await Service.findOne({ _id: service, branch: branchId, isActive: true });
-    return { services: s ? [s] : [], label: s ? s.name : null };
+async function scopeDepartments(branchId, { room, department }) {
+  if (department) {
+    const d = await Department.findOne({ _id: department, branch: branchId, isActive: true });
+    return { departments: d ? [d] : [], label: d ? d.name : null, roomDoc: null };
   }
-  if (zone) {
-    const z = await Zone.findOne({ _id: zone, branch: branchId, isActive: true }).populate({
-      path: 'services', match: { isActive: true },
+  if (room) {
+    const r = await Room.findOne({ _id: room, branch: branchId, isActive: true }).populate({
+      path: 'departments', match: { isActive: true },
     });
-    return { services: z ? z.services : [], label: z ? z.name : null };
+    return { departments: r ? r.departments : [], label: r ? r.name : null, roomDoc: r };
   }
-  const services = await Service.find({ branch: branchId, isActive: true });
-  return { services, label: null };
+  const departments = await Department.find({ branch: branchId, isActive: true });
+  return { departments, label: null, roomDoc: null };
 }
 
 // Read the customer's token session from ?s= or the x-session header.
@@ -65,9 +65,8 @@ function sessionFromReq(req) {
 }
 
 /**
- * Join page bootstrap: the services a customer can pick, plus the org's
- * anti-cheat policy so the frontend knows whether to collect OTP / location.
- * Safe to expose — no secrets, only what the join form needs.
+ * Join page bootstrap: the departments a customer can pick (scoped to the room
+ * they scanned), plus the org's anti-cheat policy.
  */
 router.get('/branch/:branchId/config', async (req, res, next) => {
   try {
@@ -75,14 +74,21 @@ router.get('/branch/:branchId/config', async (req, res, next) => {
     if (!branch || !branch.isActive) return res.status(404).json({ message: 'Branch not found' });
     const org = await Organization.findById(branch.organization);
 
-    // If the scan was scoped to a zone/service, only offer those services.
-    const { services, label } = await scopeServices(branch._id, { zone: req.query.zone, service: req.query.service });
+    const { departments, label } = await scopeDepartments(branch._id, {
+      room: req.query.room, department: req.query.department,
+    });
 
     res.json({
-      organization: { name: org.name, slug: org.slug, brandColor: org.settings.brandColor },
+      organization: {
+        name: org.name, slug: org.slug,
+        brandColor: org.settings.brandColor,
+        terminology: org.terminology,
+      },
       branch: { id: branch._id, name: branch.name },
-      area: label, // e.g. "Pharmacy" — shown on the join page when scoped
-      services: services.map((s) => ({ _id: s._id, name: s.name, tokenPrefix: s.tokenPrefix, queueType: s.queueType })),
+      area: label, // e.g. "Registration" — shown on the join page when scoped
+      departments: departments.map((d) => ({
+        _id: d._id, name: d.name, tokenPrefix: d.tokenPrefix, queueType: d.queueType,
+      })),
       policy: {
         requireOtp: org.settings.requireOtp,
         requireGeofence: org.settings.requireGeofence,
@@ -102,16 +108,15 @@ router.post('/otp/request', otpLimiter, [body('phone').trim().notEmpty()], async
 });
 
 /**
- * The core customer action: join a queue from a scanned QR. Enforces the
- * org's configured anti-cheat policy (fresh QR token, OTP, geofence) before
- * issuing a token. No account, no app install.
+ * The core customer action: join a queue from a scanned QR. Enforces the org's
+ * configured anti-cheat policy before issuing a token. No account, no app.
  */
 router.post(
   '/join',
   joinLimiter,
   [
     body('branchId').notEmpty(),
-    body('serviceId').notEmpty(),
+    body('departmentId').notEmpty(),
     body('customerName').optional().trim(),
     body('customerPhone').optional().trim(),
   ],
@@ -120,20 +125,19 @@ router.post(
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
-      const { branchId, serviceId, qrToken, customerName, customerPhone, otp, geo } = req.body;
+      const { branchId, departmentId, roomId, qrToken, customerName, customerPhone, otp, geo } = req.body;
 
       const branch = await Branch.findById(branchId);
       if (!branch || !branch.isActive) return res.status(404).json({ message: 'Branch not found' });
       const org = await Organization.findById(branch.organization);
       if (!org || org.status !== 'active') return res.status(403).json({ message: 'Organization unavailable' });
 
-      // 0. The service must belong to this branch (can't join another area's/
-      //    org's queue by passing a foreign serviceId).
-      const svc = await Service.findOne({ _id: serviceId, branch: branch._id, isActive: true });
-      if (!svc) return res.status(404).json({ message: 'That service is not available here.' });
+      // 0. The department must belong to this branch (can't join another
+      //    branch's or org's queue by passing a foreign id).
+      const dept = await Department.findOne({ _id: departmentId, branch: branch._id, isActive: true });
+      if (!dept) return res.status(404).json({ message: 'That department is not available here.' });
 
-      // 1. Fresh-QR check (anti screenshot-reuse). Required when a rotating
-      //    QR is in use; the token's short TTL means an old screenshot fails.
+      // 1. Fresh-QR check (anti screenshot-reuse).
       if (qrToken) {
         try {
           const decoded = verify(qrToken);
@@ -157,8 +161,7 @@ router.post(
         if (!geo || branch.geo.lat == null) {
           return res.status(400).json({ message: 'Location is required to join this queue.' });
         }
-        const dist = distanceMeters(geo, branch.geo);
-        if (dist > (branch.geo.radiusMeters || 150)) {
+        if (distanceMeters(geo, branch.geo) > (branch.geo.radiusMeters || 150)) {
           return res.status(403).json({ message: 'You must be at the location to join this queue.' });
         }
       }
@@ -175,10 +178,19 @@ router.post(
         }
       }
 
+      // Which room the customer was directed to (the QR they scanned, or the
+      // first room that handles this department).
+      let room = roomId || null;
+      if (!room) {
+        const r = await Room.findOne({ branch: branch._id, departments: dept._id, isActive: true }).select('_id');
+        room = r?._id || null;
+      }
+
       const result = await issueToken({
         organization: org._id,
         branchId,
-        serviceId,
+        departmentId,
+        roomId: room,
         source: 'online',
         customerName,
         customerPhone,
@@ -190,7 +202,7 @@ router.post(
         sessionToken: result.sessionToken,
         position: result.position,
         etaSeconds: result.token.predictedEtaSeconds,
-        serviceName: result.serviceName,
+        departmentName: result.departmentName,
         branchName: result.branchName,
         qrCode: result.token.qrCode,
       });
@@ -204,23 +216,22 @@ router.post(
 router.get('/token/:id', async (req, res, next) => {
   try {
     const session = sessionFromReq(req);
-    const token = await Token.findById(req.params.id).populate('service', 'name').populate('counter', 'name');
+    const token = await Token.findById(req.params.id)
+      .populate('department', 'name')
+      .populate('counter', 'name code')
+      .populate('room', 'name');
     if (!token) return res.status(404).json({ message: 'Token not found' });
     if (!session || session.token !== token._id.toString() || session.sid !== token.sessionId) {
       return res.status(403).json({ message: 'Not authorized for this token' });
     }
 
-    // Live position = waiting tokens in the same service ahead of this one.
     let position = 0;
     if (token.status === 'waiting') {
       position = await Token.countDocuments({
         branch: token.branch,
-        service: token.service,
+        department: token.department,
         status: 'waiting',
-        $or: [
-          { isPriority: true, issuedAt: { $lt: token.issuedAt } },
-          { isPriority: token.isPriority, issuedAt: { $lt: token.issuedAt } },
-        ],
+        issuedAt: { $lt: token.issuedAt },
       });
       position += 1;
     }
@@ -230,8 +241,9 @@ router.get('/token/:id', async (req, res, next) => {
         id: token._id,
         tokenNumber: token.tokenNumber,
         status: token.status,
-        service: token.service?.name,
-        counter: token.counter?.name || null,
+        department: token.department?.name,
+        room: token.room?.name || null,
+        counter: token.counter?.code || token.counter?.name || null,
         position,
         etaSeconds: token.predictedEtaSeconds,
         isPriority: token.isPriority,
@@ -242,7 +254,7 @@ router.get('/token/:id', async (req, res, next) => {
   }
 });
 
-// Customer cancels their OWN token (fixes the earlier IDOR — session-bound).
+// Customer cancels their OWN token (session-bound).
 router.post('/token/:id/cancel', async (req, res, next) => {
   try {
     const session = sessionFromReq(req);
@@ -265,7 +277,7 @@ router.post('/token/:id/cancel', async (req, res, next) => {
       toStatus: 'cancelled',
       metadata: { by: 'customer' },
     });
-    await recalcServiceEtas(token.branch, token.service);
+    await recalcDepartmentEtas(token.branch, token.department);
     emitQueueUpdate(token.branch, { type: 'cancelled', tokenId: token._id });
     res.json({ message: 'Token cancelled' });
   } catch (err) {
@@ -274,47 +286,42 @@ router.post('/token/:id/cancel', async (req, res, next) => {
 });
 
 /**
- * Wall-display board data, SCOPEABLE so each physical area gets its own screen:
- *   /board/:branchId               -> whole branch
- *   /board/:branchId?zone=<id>     -> just that zone's services (e.g. Pharmacy)
- *   /board/:branchId?service=<id>  -> a single service
- *
- * Service-centric: for each service in scope it lists who is being served now
- * (token + which counter) and how many are waiting.
+ * Wall-display data. Scoped the same way as the QR: a room's screen shows only
+ * that room's departments and the counters standing in it.
  */
 router.get('/board/:branchId', async (req, res, next) => {
   try {
     const branch = await Branch.findById(req.params.branchId);
     if (!branch) return res.status(404).json({ message: 'Branch not found' });
 
-    const { services, label } = await scopeServices(branch._id, { zone: req.query.zone, service: req.query.service });
-    const serviceIds = services.map((s) => s._id);
+    const { departments, label, roomDoc } = await scopeDepartments(branch._id, {
+      room: req.query.room, department: req.query.department,
+    });
+    const deptIds = departments.map((d) => d._id);
 
-    const [serving, waitingAgg] = await Promise.all([
-      Token.find({ branch: branch._id, service: { $in: serviceIds }, status: 'serving' })
-        .populate('counter', 'name')
-        .populate('service', 'name')
-        .select('tokenNumber counter service'),
-      Token.aggregate([
-        { $match: { branch: branch._id, status: 'waiting' } },
-        { $group: { _id: '$service', count: { $sum: 1 } } },
-      ]),
+    // Counters in scope: those in the room, or all in the branch.
+    const counterFilter = { branch: branch._id, status: { $in: ['open', 'paused'] } };
+    if (roomDoc) counterFilter.room = roomDoc._id;
+    const counters = await Counter.find(counterFilter)
+      .populate({ path: 'currentToken', select: 'tokenNumber department' })
+      .select('name code status currentToken departments room');
+
+    const waiting = await Token.aggregate([
+      { $match: { department: { $in: deptIds }, status: 'waiting' } },
+      { $group: { _id: '$department', count: { $sum: 1 } } },
     ]);
-    const waitingMap = Object.fromEntries(waitingAgg.map((w) => [String(w._id), w.count]));
-
-    // One row per service in scope: its current call(s) + waiting count.
-    const board = services.map((s) => ({
-      service: s.name,
-      waiting: waitingMap[String(s._id)] || 0,
-      nowServing: serving
-        .filter((t) => String(t.service?._id) === String(s._id))
-        .map((t) => ({ tokenNumber: t.tokenNumber, counter: t.counter?.name || null })),
-    }));
+    const waitingMap = Object.fromEntries(waiting.map((w) => [String(w._id), w.count]));
 
     res.json({
       branch: { id: branch._id, name: branch.name },
-      area: label,          // zone/service name, or null for whole branch
-      services: board,
+      area: label,
+      departments: departments.map((d) => ({
+        department: d.name,
+        waiting: waitingMap[String(d._id)] || 0,
+        nowServing: counters
+          .filter((c) => c.currentToken && String(c.currentToken.department) === String(d._id))
+          .map((c) => ({ tokenNumber: c.currentToken.tokenNumber, counter: c.code || c.name })),
+      })),
     });
   } catch (err) {
     next(err);

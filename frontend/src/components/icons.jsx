@@ -18,14 +18,12 @@ export const Icon = {
   x: (p) => (<svg {...base} {...p}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>),
 };
 
-// Nav item -> icon key
+// Branch-nav segment -> icon key
 export const NAV_ICON = {
-  '/overview': 'grid',
-  '/call': 'call',
-  '/branches': 'building',
-  '/services': 'list',
-  '/counters': 'counter',
-  '/staff': 'users',
-  '/analytics': 'chart',
-  '/displays': 'monitor',
+  overview: 'grid',
+  departments: 'list',
+  rooms: 'counter',
+  staff: 'users',
+  analytics: 'chart',
+  displays: 'monitor',
 };

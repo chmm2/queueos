@@ -3,23 +3,23 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import publicApi from '../../api/publicClient';
 
 /**
- * The customer join flow — the public face of the product, opened from a
- * scanned branch QR. Picks a service (tappable cards, not a dropdown),
- * collects what the org's policy requires (OTP / location), and issues a
- * token. Branded with the organization's accent color.
+ * The customer join flow — the public face of the product, opened by scanning
+ * the QR on a room's wall. Because the QR is scoped to that room, the customer
+ * only ever sees the departments served there (and skips the picker entirely
+ * when the room handles just one).
  */
 export default function Join() {
   const { branchId } = useParams();
   const [params] = useSearchParams();
   const qrToken = params.get('t');
-  const zone = params.get('zone');
-  const service = params.get('service');
+  const roomId = params.get('room');
+  const departmentParam = params.get('department');
   const navigate = useNavigate();
 
   const [config, setConfig] = useState(null);
   const [fatal, setFatal] = useState('');
   const [error, setError] = useState('');
-  const [serviceId, setServiceId] = useState('');
+  const [departmentId, setDepartmentId] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
@@ -29,17 +29,17 @@ export default function Join() {
 
   useEffect(() => {
     const q = new URLSearchParams();
-    if (zone) q.set('zone', zone);
-    if (service) q.set('service', service);
+    if (roomId) q.set('room', roomId);
+    if (departmentParam) q.set('department', departmentParam);
     publicApi
       .get(`/branch/${branchId}/config?${q.toString()}`)
       .then(({ data }) => {
         setConfig(data);
-        // If the scanned area has exactly one service, pre-select it.
-        if (data.services.length === 1) setServiceId(data.services[0]._id);
+        // If this room handles exactly one department, pre-select it.
+        if (data.departments.length === 1) setDepartmentId(data.departments[0]._id);
       })
       .catch(() => setFatal('This location could not be found. Please re-scan the QR code at the venue.'));
-  }, [branchId, zone, service]);
+  }, [branchId, roomId, departmentParam]);
 
   const accent = config?.organization?.brandColor || '#4f52e0';
 
@@ -67,14 +67,15 @@ export default function Join() {
 
   async function submit(e) {
     e.preventDefault();
-    if (!serviceId) return setError('Please choose a service.');
+    if (!departmentId) return setError('Please choose a service.');
     setError('');
     setSubmitting(true);
     try {
       const geo = config?.policy?.requireGeofence ? await getGeo() : undefined;
       const { data } = await publicApi.post('/join', {
         branchId,
-        serviceId,
+        departmentId,
+        roomId,
         qrToken,
         customerName: name,
         customerPhone: phone,
@@ -141,15 +142,15 @@ export default function Join() {
         <p className="text-sm text-ink-500 mb-6">Get your place in line — we'll keep you updated live.</p>
 
         {/* Service picker: tappable cards (hidden when the area has just one) */}
-        {config.services.length > 1 && <p className="text-[13px] font-medium text-ink-600 mb-2">Choose a service</p>}
-        <div className={`grid gap-2 mb-6 ${config.services.length === 1 ? 'hidden' : ''}`}>
-          {config.services.map((s) => {
-            const active = serviceId === s._id;
+        {config.departments.length > 1 && <p className="text-[13px] font-medium text-ink-600 mb-2">Choose a service</p>}
+        <div className={`grid gap-2 mb-6 ${config.departments.length === 1 ? 'hidden' : ''}`}>
+          {config.departments.map((s) => {
+            const active = departmentId === s._id;
             return (
               <button
                 type="button"
                 key={s._id}
-                onClick={() => setServiceId(s._id)}
+                onClick={() => setDepartmentId(s._id)}
                 className={`flex items-center justify-between px-4 py-3 rounded-xl border text-left transition ${
                   active ? 'border-transparent ring-2' : 'border-ink-200 hover:border-ink-300'
                 }`}

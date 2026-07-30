@@ -1,43 +1,43 @@
 const express = require('express');
 const Token = require('../models/Token');
 const Counter = require('../models/Counter');
-const Service = require('../models/Service');
+const Department = require('../models/Department');
 const AuditLog = require('../models/AuditLog');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requireOrg, scoped, assertSameOrg } = require('../middleware/tenant');
 const stateMachine = require('../services/tokenStateMachine');
-const { recalcServiceEtas, recalibrateServiceAvg } = require('../services/etaService');
+const { recalcDepartmentEtas, recalibrateDepartmentAvg } = require('../services/etaService');
 const { issueToken, callNext } = require('../services/queueService');
 const { notify } = require('../services/notificationService');
 const { emitQueueUpdate } = require('../sockets');
 
 const router = express.Router();
-
-// All token routes are tenant-scoped.
 router.use(authenticate, requireOrg);
 
-// Live queue for a branch (staff/kiosk display).
+// Live queue for a branch (optionally narrowed to a room).
 router.get('/branch/:branchId', async (req, res) => {
-  const tokens = await Token.find(
-    scoped(req, {
-      branch: req.params.branchId,
-      status: { $in: ['waiting', 'serving', 'held', 'skipped'] },
-    })
-  )
-    .populate('service', 'name tokenPrefix')
-    .populate('counter', 'name')
+  const filter = scoped(req, {
+    branch: req.params.branchId,
+    status: { $in: ['waiting', 'serving', 'held', 'skipped'] },
+  });
+  if (req.query.room) filter.room = req.query.room;
+
+  const tokens = await Token.find(filter)
+    .populate('department', 'name tokenPrefix')
+    .populate('counter', 'name code')
     .sort({ isPriority: -1, issuedAt: 1 });
   res.json({ tokens });
 });
 
 // Staff/kiosk issues a walk-in token.
-router.post('/', authorize('Staff', 'Operator', 'Admin'), async (req, res, next) => {
+router.post('/', authorize('Staff', 'Admin'), async (req, res, next) => {
   try {
-    const { branchId, serviceId, isPriority, customerName, customerPhone } = req.body;
+    const { branchId, departmentId, roomId, isPriority, customerName, customerPhone } = req.body;
     const result = await issueToken({
       organization: req.orgId,
       branchId,
-      serviceId,
+      departmentId,
+      roomId,
       source: 'walk-in',
       isPriority,
       customerName,
@@ -51,7 +51,7 @@ router.post('/', authorize('Staff', 'Operator', 'Admin'), async (req, res, next)
 });
 
 // Call the next eligible token to a counter (race-safe).
-router.post('/call-next', authorize('Staff', 'Operator', 'Admin'), async (req, res, next) => {
+router.post('/call-next', authorize('Staff', 'Admin'), async (req, res, next) => {
   try {
     const counter = await Counter.findById(req.body.counterId);
     if (!assertSameOrg(req, res, counter)) return;
@@ -65,9 +65,8 @@ router.post('/call-next', authorize('Staff', 'Operator', 'Admin'), async (req, r
 });
 
 /**
- * Shared handler for the lifecycle transitions. Fetches the token, asserts
- * it belongs to the caller's org, applies the state-machine transition,
- * refreshes that service's ETAs, and broadcasts.
+ * Shared handler for lifecycle transitions: fetch, assert tenant, apply the
+ * state-machine transition, refresh that department's ETAs, broadcast.
  */
 async function doTransition(req, res, toStatus) {
   const token = await Token.findById(req.params.id);
@@ -78,46 +77,34 @@ async function doTransition(req, res, toStatus) {
   if (toStatus === 'completed' && updated.counter) {
     await Counter.findByIdAndUpdate(updated.counter, { currentToken: null });
   }
-  await recalcServiceEtas(updated.branch, updated.service);
-  emitQueueUpdate(updated.branch, { type: toStatus, tokenId: updated._id, service: updated.service });
+  await recalcDepartmentEtas(updated.branch, updated.department);
+  emitQueueUpdate(updated.branch, { type: toStatus, tokenId: updated._id, department: updated.department });
   return updated;
 }
 
-router.patch('/:id/hold', authorize('Staff', 'Operator', 'Admin'), async (req, res, next) => {
-  try {
-    const t = await doTransition(req, res, 'held');
-    if (t) res.json({ token: t });
-  } catch (err) {
-    res.status(err.statusCode || 500).json({ message: err.message });
-  }
+const lifecycle = [
+  ['hold', 'held'],
+  ['skip', 'skipped'],
+  ['recall', 'serving'],
+];
+
+lifecycle.forEach(([path, status]) => {
+  router.patch(`/:id/${path}`, authorize('Staff', 'Admin'), async (req, res) => {
+    try {
+      const t = await doTransition(req, res, status);
+      if (t) res.json({ token: t });
+    } catch (err) {
+      res.status(err.statusCode || 500).json({ message: err.message });
+    }
+  });
 });
 
-router.patch('/:id/skip', authorize('Staff', 'Operator', 'Admin'), async (req, res, next) => {
-  try {
-    const t = await doTransition(req, res, 'skipped');
-    if (t) res.json({ token: t });
-  } catch (err) {
-    res.status(err.statusCode || 500).json({ message: err.message });
-  }
-});
-
-// Recall a held/skipped token back into service.
-router.patch('/:id/recall', authorize('Staff', 'Operator', 'Admin'), async (req, res) => {
-  try {
-    const t = await doTransition(req, res, 'serving');
-    if (t) res.json({ token: t });
-  } catch (err) {
-    res.status(err.statusCode || 500).json({ message: err.message });
-  }
-});
-
-router.patch('/:id/complete', authorize('Staff', 'Operator', 'Admin'), async (req, res) => {
+router.patch('/:id/complete', authorize('Staff', 'Admin'), async (req, res) => {
   try {
     const t = await doTransition(req, res, 'completed');
     if (t) {
-      // Learn from this real completion: refine the service's measured average
-      // service time (off the response path).
-      recalibrateServiceAvg(t.service).catch(() => {});
+      // Learn from this real completion (off the response path).
+      recalibrateDepartmentAvg(t.department).catch(() => {});
       res.json({ token: t });
     }
   } catch (err) {
@@ -125,11 +112,10 @@ router.patch('/:id/complete', authorize('Staff', 'Operator', 'Admin'), async (re
   }
 });
 
-router.patch('/:id/miss', authorize('Staff', 'Operator', 'Admin'), async (req, res) => {
+router.patch('/:id/miss', authorize('Staff', 'Admin'), async (req, res) => {
   try {
     const token = await Token.findById(req.params.id);
     if (!assertSameOrg(req, res, token)) return;
-    // Notify the real token owner, not a client-supplied address.
     notify({ ...token.toObject(), organization: req.orgId }, 'missed').catch(() => {});
     const t = await doTransition(req, res, 'missed');
     if (t) res.json({ token: t });
@@ -138,19 +124,19 @@ router.patch('/:id/miss', authorize('Staff', 'Operator', 'Admin'), async (req, r
   }
 });
 
-// Transfer a token to another service (cross-service journey, e.g. Consultation -> Pharmacy).
-router.patch('/:id/transfer', authorize('Staff', 'Operator', 'Admin'), async (req, res, next) => {
+// Transfer a token to another department (e.g. Consultation -> Pharmacy).
+router.patch('/:id/transfer', authorize('Staff', 'Admin'), async (req, res, next) => {
   try {
-    const { serviceId } = req.body;
+    const { departmentId } = req.body;
     const token = await Token.findById(req.params.id);
     if (!assertSameOrg(req, res, token)) return;
-    const service = await Service.findById(serviceId);
-    if (!assertSameOrg(req, res, service)) return;
+    const department = await Department.findById(departmentId);
+    if (!assertSameOrg(req, res, department)) return;
 
-    const fromService = token.service;
-    // Re-enter the destination queue as waiting; keep counter free.
+    const fromDepartment = token.department;
     if (token.counter) await Counter.findByIdAndUpdate(token.counter, { currentToken: null });
-    token.service = service._id;
+
+    token.department = department._id;
     token.status = 'waiting';
     token.counter = null;
     token.calledAt = null;
@@ -163,12 +149,12 @@ router.patch('/:id/transfer', authorize('Staff', 'Operator', 'Admin'), async (re
       branch: token.branch,
       actor: req.user._id,
       action: 'TOKEN_TRANSFERRED',
-      metadata: { from: fromService, to: service._id },
+      metadata: { from: fromDepartment, to: department._id },
     });
 
     await Promise.all([
-      recalcServiceEtas(token.branch, fromService),
-      recalcServiceEtas(token.branch, service._id),
+      recalcDepartmentEtas(token.branch, fromDepartment),
+      recalcDepartmentEtas(token.branch, department._id),
     ]);
     emitQueueUpdate(token.branch, { type: 'transfer', tokenId: token._id });
     res.json({ token });
@@ -178,7 +164,7 @@ router.patch('/:id/transfer', authorize('Staff', 'Operator', 'Admin'), async (re
 });
 
 // Full lifecycle history for one token.
-router.get('/:id/audit', authorize('Admin', 'Operator'), async (req, res) => {
+router.get('/:id/audit', authorize('Admin'), async (req, res) => {
   const token = await Token.findById(req.params.id);
   if (!assertSameOrg(req, res, token)) return;
   const logs = await AuditLog.find({ token: token._id }).sort({ createdAt: 1 });

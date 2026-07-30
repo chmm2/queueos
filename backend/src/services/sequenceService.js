@@ -23,10 +23,10 @@ function branchDateKey(timezone = 'UTC', date = new Date()) {
  *
  * Returns a formatted token number like "A-014".
  */
-async function nextTokenNumber({ organization, branch, service, prefix, timezone }) {
+async function nextTokenNumber({ organization, branch, department, prefix, timezone }) {
   const dateKey = branchDateKey(timezone);
   const doc = await TokenSequence.findOneAndUpdate(
-    { organization, branch, service, dateKey },
+    { organization, branch, department, dateKey },
     { $inc: { seq: 1 } },
     { new: true, upsert: true, setDefaultsOnInsert: true }
   );

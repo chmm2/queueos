@@ -1,6 +1,6 @@
 const axios = require('axios');
 const Token = require('../models/Token');
-const Service = require('../models/Service');
+const Department = require('../models/Department');
 const Counter = require('../models/Counter');
 const { withScheme } = require('../config/urls');
 
@@ -11,24 +11,20 @@ const REQUEST_TIMEOUT_MS = Number(process.env.ML_TIMEOUT_MS) || 1500;
  * ETA prediction. Two sources, and we are always honest about which one:
  *
  *   - 'model'      the organization's OWN self-trained model is live (it has
- *                  learned from enough real visits and proven accurate). The
- *                  ML service returns a number only in this case.
+ *                  learned from enough real visits and proven accurate).
  *   - 'heuristic'  cold start / still learning. A transparent formula using
  *                  the org's own current state (position, open counters, and
  *                  the service time measured from their real completions).
- *                  No synthetic data — just arithmetic on their numbers.
  *
  * The ML call is non-blocking I/O with a short timeout, so a slow model can
  * never stall the event loop or freeze real-time queue updates.
  */
 async function predictEta({ organization, queuePosition, isPriority, avgServiceSeconds, openCounters, at = new Date() }) {
-  const hourOfDay = at.getUTCHours();
-  const dayOfWeek = at.getUTCDay();
   const feats = {
     orgId: organization ? organization.toString() : undefined,
     queuePosition,
-    hourOfDay,
-    dayOfWeek,
+    hourOfDay: at.getUTCHours(),
+    dayOfWeek: at.getUTCDay(),
     isPriority: !!isPriority,
     avgServiceSeconds: Math.max(1, Math.round(avgServiceSeconds || 300)),
     openCounters: Math.max(1, openCounters || 1),
@@ -45,8 +41,8 @@ async function predictEta({ organization, queuePosition, isPriority, avgServiceS
   return { etaSeconds: heuristic(feats), source: 'heuristic' };
 }
 
-// Transparent cold-start formula: work ahead of you, shared across open
-// counters, halved for priority. Uses the org's own configured/measured times.
+// Transparent cold-start formula: work ahead of you, shared across the
+// counters actually able to serve you, halved for priority.
 function heuristic({ queuePosition, avgServiceSeconds, openCounters, isPriority }) {
   const perToken = avgServiceSeconds || 300;
   const parallel = Math.max(1, openCounters || 1);
@@ -54,30 +50,40 @@ function heuristic({ queuePosition, avgServiceSeconds, openCounters, isPriority 
   return Math.max(0, Math.round(isPriority ? base * 0.5 : base));
 }
 
-async function openCounterCount(branchId) {
-  const n = await Counter.countDocuments({ branch: branchId, status: 'open' });
+/**
+ * How many open counters can actually serve a given department. A counter
+ * qualifies if it is open AND either handles that department explicitly or
+ * handles everything in its room (empty `departments` = all).
+ */
+async function openCounterCount(branchId, departmentId) {
+  const open = await Counter.find({ branch: branchId, status: 'open' }).select('departments');
+  if (!departmentId) return Math.max(1, open.length);
+  const n = open.filter(
+    (c) => !c.departments?.length || c.departments.some((d) => String(d) === String(departmentId))
+  ).length;
   return Math.max(1, n);
 }
 
 /**
- * Recompute and persist ETAs for a service's waiting queue. Called after any
- * transition so displayed waits stay fresh.
+ * Recompute and persist ETAs for a department's waiting queue. Called after
+ * any transition so displayed waits stay fresh.
  */
-async function recalcServiceEtas(branchId, serviceId) {
-  const [service, openCounters] = await Promise.all([
-    Service.findById(serviceId).select('avgServiceTimeSeconds organization'),
-    openCounterCount(branchId),
+async function recalcDepartmentEtas(branchId, departmentId) {
+  if (!departmentId) return [];
+  const [department, openCounters] = await Promise.all([
+    Department.findById(departmentId).select('avgServiceTimeSeconds organization'),
+    openCounterCount(branchId, departmentId),
   ]);
-  if (!service) return [];
-  const avgServiceSeconds = service.avgServiceTimeSeconds || 300;
+  if (!department) return [];
+  const avgServiceSeconds = department.avgServiceTimeSeconds || 300;
 
-  const waiting = await Token.find({ branch: branchId, service: serviceId, status: 'waiting' })
+  const waiting = await Token.find({ branch: branchId, department: departmentId, status: 'waiting' })
     .sort({ isPriority: -1, issuedAt: 1 });
 
   await Promise.all(
     waiting.map(async (token, index) => {
       const { etaSeconds, source } = await predictEta({
-        organization: service.organization,
+        organization: department.organization,
         queuePosition: index + 1,
         isPriority: token.isPriority,
         avgServiceSeconds,
@@ -92,26 +98,37 @@ async function recalcServiceEtas(branchId, serviceId) {
 }
 
 async function recalcBranchEtas(branchId) {
-  const serviceIds = await Token.distinct('service', { branch: branchId, status: 'waiting' });
-  await Promise.all(serviceIds.filter(Boolean).map((sid) => recalcServiceEtas(branchId, sid)));
+  const ids = await Token.distinct('department', { branch: branchId, status: 'waiting' });
+  await Promise.all(ids.filter(Boolean).map((id) => recalcDepartmentEtas(branchId, id)));
 }
 
 /**
- * Self-calibrate a service's average service time from REAL completed visits
- * (measured `completedAt - startedAt`). This keeps even the heuristic honest —
- * it drifts toward the org's true pace instead of a configured guess.
+ * Self-calibrate a department's average service time from REAL completed
+ * visits (measured `completedAt - startedAt`). Keeps even the heuristic honest.
  */
-async function recalibrateServiceAvg(serviceId) {
-  const recent = await Token.find({ service: serviceId, status: 'completed', startedAt: { $ne: null }, completedAt: { $ne: null } })
+async function recalibrateDepartmentAvg(departmentId) {
+  if (!departmentId) return;
+  const recent = await Token.find({
+    department: departmentId, status: 'completed', startedAt: { $ne: null }, completedAt: { $ne: null },
+  })
     .sort({ completedAt: -1 })
     .limit(100)
     .select('startedAt completedAt');
   if (recent.length < 5) return; // wait for a little real signal first
 
-  const durations = recent.map((t) => (t.completedAt - t.startedAt) / 1000).filter((d) => d > 0 && d < 24 * 3600);
+  const durations = recent
+    .map((t) => (t.completedAt - t.startedAt) / 1000)
+    .filter((d) => d > 0 && d < 24 * 3600);
   if (!durations.length) return;
   const avg = Math.round(durations.reduce((a, b) => a + b, 0) / durations.length);
-  await Service.findByIdAndUpdate(serviceId, { avgServiceTimeSeconds: avg });
+  await Department.findByIdAndUpdate(departmentId, { avgServiceTimeSeconds: avg });
 }
 
-module.exports = { predictEta, heuristic, recalcServiceEtas, recalcBranchEtas, openCounterCount, recalibrateServiceAvg };
+module.exports = {
+  predictEta,
+  heuristic,
+  recalcDepartmentEtas,
+  recalcBranchEtas,
+  openCounterCount,
+  recalibrateDepartmentAvg,
+};

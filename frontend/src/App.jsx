@@ -5,12 +5,14 @@ import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './layout/DashboardLayout';
 import { useAuthStore } from './store/authStore';
 
-// Console (staff/admin) pages
-import Overview from './pages/console/Overview';
-import CounterCaller from './pages/console/CounterCaller';
+// Organization level
 import Branches from './pages/console/Branches';
-import Services from './pages/console/Services';
-import Counters from './pages/console/Counters';
+import CounterCaller from './pages/console/CounterCaller';
+
+// Branch level
+import BranchOverview from './pages/console/BranchOverview';
+import Departments from './pages/console/Departments';
+import Rooms from './pages/console/Rooms';
 import Staff from './pages/console/Staff';
 import Analytics from './pages/console/Analytics';
 import Displays from './pages/console/Displays';
@@ -20,22 +22,18 @@ import Join from './pages/public/Join';
 import TrackToken from './pages/public/TrackToken';
 import Board from './pages/public/Board';
 
-// Where each role lands after login.
+// Admins configure the org; staff go straight to their counter.
 function Home() {
   const role = useAuthStore((s) => s.user?.role);
-  return <Navigate to={role === 'Staff' || role === 'User' ? '/call' : '/overview'} replace />;
+  return <Navigate to={role === 'Admin' ? '/branches' : '/call'} replace />;
 }
 
-// Restrict a console route to specific roles.
-function Only({ roles, children }) {
+function AdminOnly({ children }) {
   const role = useAuthStore((s) => s.user?.role);
-  return roles.includes(role) ? children : <Navigate to="/" replace />;
+  return role === 'Admin' ? children : <Navigate to="/call" replace />;
 }
 
 export default function App() {
-  const admin = ['Admin'];
-  const ops = ['Admin', 'Operator'];
-
   return (
     <BrowserRouter>
       <Routes>
@@ -49,7 +47,7 @@ export default function App() {
         <Route path="/t/:tokenId" element={<TrackToken />} />
         <Route path="/board/:branchId" element={<Board />} />
 
-        {/* Authenticated console with shared layout */}
+        {/* Authenticated console */}
         <Route
           element={
             <ProtectedRoute>
@@ -58,14 +56,16 @@ export default function App() {
           }
         >
           <Route path="/" element={<Home />} />
-          <Route path="/overview" element={<Only roles={ops}><Overview /></Only>} />
           <Route path="/call" element={<CounterCaller />} />
-          <Route path="/branches" element={<Only roles={admin}><Branches /></Only>} />
-          <Route path="/services" element={<Only roles={ops}><Services /></Only>} />
-          <Route path="/counters" element={<Only roles={ops}><Counters /></Only>} />
-          <Route path="/staff" element={<Only roles={ops}><Staff /></Only>} />
-          <Route path="/analytics" element={<Only roles={ops}><Analytics /></Only>} />
-          <Route path="/displays" element={<Displays />} />
+          <Route path="/branches" element={<AdminOnly><Branches /></AdminOnly>} />
+
+          {/* Everything operational is scoped to a branch */}
+          <Route path="/branches/:branchId" element={<AdminOnly><BranchOverview /></AdminOnly>} />
+          <Route path="/branches/:branchId/departments" element={<AdminOnly><Departments /></AdminOnly>} />
+          <Route path="/branches/:branchId/rooms" element={<AdminOnly><Rooms /></AdminOnly>} />
+          <Route path="/branches/:branchId/staff" element={<AdminOnly><Staff /></AdminOnly>} />
+          <Route path="/branches/:branchId/analytics" element={<AdminOnly><Analytics /></AdminOnly>} />
+          <Route path="/branches/:branchId/displays" element={<AdminOnly><Displays /></AdminOnly>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

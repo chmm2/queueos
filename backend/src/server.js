@@ -18,9 +18,10 @@ const { startTrainingScheduler, stopTrainingScheduler } = require('./services/tr
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const branchRoutes = require('./routes/branches');
-const serviceRoutes = require('./routes/services');
+
 const counterRoutes = require('./routes/counters');
-const zoneRoutes = require('./routes/zones');
+const departmentRoutes = require('./routes/departments');
+const roomRoutes = require('./routes/rooms');
 const tokenRoutes = require('./routes/tokens');
 const analyticsRoutes = require('./routes/analytics');
 const publicRoutes = require('./routes/public');
@@ -65,9 +66,9 @@ app.get('/ready', async (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/branches', branchRoutes);
-app.use('/api/services', serviceRoutes);
+app.use('/api/departments', departmentRoutes);
 app.use('/api/counters', counterRoutes);
-app.use('/api/zones', zoneRoutes);
+app.use('/api/rooms', roomRoutes);
 app.use('/api/tokens', tokenRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/public', publicRoutes); // unauthenticated customer + display endpoints

@@ -6,20 +6,28 @@ import { useAuthStore } from '../../store/authStore';
 import { useBranchStore } from '../../store/branchStore';
 import { toast } from '../../store/toastStore';
 import { useTerms } from '../../lib/terms';
-import { PageHeader, Card, Badge, STATUS_TONE, EmptyState, btn } from '../../components/ui';
+import { PageHeader, Card, Badge, STATUS_TONE, EmptyState } from '../../components/ui';
 
 /**
- * The operator workstation. Pick your counter, call the next customer, work
- * the token (hold / skip / complete). The queue updates live over Socket.IO.
+ * The counter workstation. A staff member picks their counter (identified by
+ * its printed code, e.g. DCC-MH-REG-01), calls the next customer, and works
+ * the token. The queue shown is only what this counter's room handles.
  */
 export default function CounterCaller() {
   const { user, token: authToken } = useAuthStore();
-  const branchId = useBranchStore((s) => s.branchId);
+  const branches = useBranchStore((s) => s.branches);
   const t = useTerms();
+
+  const [branchId, setBranchId] = useState(user?.branch || '');
   const [counters, setCounters] = useState([]);
   const [counterId, setCounterId] = useState('');
   const [tokens, setTokens] = useState([]);
   const [busy, setBusy] = useState(false);
+
+  // Admins may not have a branch; fall back to the first one they own.
+  useEffect(() => {
+    if (!branchId && branches.length) setBranchId(branches[0]._id);
+  }, [branches, branchId]);
 
   const refresh = useCallback(async () => {
     if (!branchId) return;
@@ -31,7 +39,9 @@ export default function CounterCaller() {
     if (!branchId) return;
     api.get(`/counters/branch/${branchId}`).then(({ data }) => {
       setCounters(data.counters);
-      const mine = data.counters.find((c) => c.assignedStaff?._id === user._id) || data.counters.find((c) => c.status === 'open');
+      const mine =
+        data.counters.find((c) => c.assignedStaff?._id === user._id) ||
+        data.counters.find((c) => c.status === 'open');
       if (mine) setCounterId((prev) => prev || mine._id);
     });
     refresh();
@@ -47,13 +57,22 @@ export default function CounterCaller() {
     };
   }, [branchId, refresh, authToken, user._id]);
 
+  const counter = counters.find((c) => c._id === counterId);
   const cid = (x) => (x.counter && (x.counter._id || x.counter)) || null;
   const serving = tokens.find((x) => x.status === 'serving' && cid(x) === counterId);
-  const waiting = tokens.filter((x) => x.status === 'waiting');
-  const counter = counters.find((c) => c._id === counterId);
+
+  // Only show the queues this counter can actually serve.
+  const myDeptIds = counter?.departments?.length
+    ? counter.departments.map((d) => String(d._id || d))
+    : null;
+  const relevant = tokens.filter((x) => {
+    if (!myDeptIds) return true;
+    return myDeptIds.includes(String(x.department?._id || x.department));
+  });
+  const waiting = relevant.filter((x) => x.status === 'waiting');
 
   async function callNext() {
-    if (!counterId) return toast.error(`Select your ${t.counter.toLowerCase()} first.`);
+    if (!counterId) return toast.error('Select your counter first.');
     setBusy(true);
     try {
       const { data } = await api.post('/tokens/call-next', { counterId });
@@ -78,35 +97,53 @@ export default function CounterCaller() {
     }
   }
 
+  const isAdmin = user?.role === 'Admin';
+
   return (
     <div className="max-w-4xl mx-auto animate-rise">
       <PageHeader
         title="Call next"
-        description={`Call and serve ${t.customerPlural.toLowerCase()} at your ${t.counter.toLowerCase()}.`}
+        description={`Serve ${t.customerPlural.toLowerCase()} at your counter.`}
         actions={
-          <select
-            value={counterId}
-            onChange={(e) => setCounterId(e.target.value)}
-            className="px-3.5 py-2 rounded-xl border border-ink-200 bg-white text-sm font-medium text-ink-700"
-          >
-            <option value="">Select a {t.counter.toLowerCase()}…</option>
-            {counters.map((c) => (
-              <option key={c._id} value={c._id}>{c.name} · {c.status}</option>
-            ))}
-          </select>
+          <div className="flex flex-wrap gap-2">
+            {isAdmin && branches.length > 1 && (
+              <select value={branchId} onChange={(e) => { setBranchId(e.target.value); setCounterId(''); }}
+                className="px-3.5 py-2 rounded-xl border border-ink-200 bg-white text-sm">
+                {branches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}
+              </select>
+            )}
+            <select value={counterId} onChange={(e) => setCounterId(e.target.value)}
+              className="px-3.5 py-2 rounded-xl border border-ink-200 bg-white text-sm font-medium text-ink-700">
+              <option value="">Select your counter…</option>
+              {counters.map((c) => (
+                <option key={c._id} value={c._id}>
+                  {c.code} — {c.room?.name || 'Room'} ({c.status})
+                </option>
+              ))}
+            </select>
+          </div>
         }
       />
 
+      {counters.length === 0 && (
+        <Card className="mb-4">
+          <EmptyState
+            title="No counters set up yet"
+            hint={isAdmin
+              ? 'Create rooms and counters for this branch first.'
+              : 'Ask an administrator to create a counter and assign you to it.'}
+            action={isAdmin && branchId
+              ? <Link to={`/branches/${branchId}/rooms`} className="text-sm font-medium text-brand-600">Go to Rooms &amp; Counters</Link>
+              : null}
+          />
+        </Card>
+      )}
+
       {counter && counter.status !== 'open' && (
         <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 mb-4">
-          This {t.counter.toLowerCase()} is {counter.status}.{' '}
-          {user?.role !== 'Staff' ? <Link to="/counters" className="underline font-medium">Open it in {t.counterPlural}</Link> : 'Ask an operator to open it.'}
-        </p>
-      )}
-      {counters.length === 0 && (
-        <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 mb-4">
-          No {t.counterPlural.toLowerCase()} yet.{' '}
-          {user?.role !== 'Staff' ? <Link to="/counters" className="underline font-medium">Create one in {t.counterPlural}</Link> : 'Ask an operator to set one up.'}
+          Counter <b>{counter.code}</b> is {counter.status}.{' '}
+          {isAdmin ? <Link to={`/branches/${branchId}/rooms`} className="underline font-medium">Open it in Rooms</Link>
+                   : 'Ask an administrator to open it.'}
         </p>
       )}
 
@@ -128,7 +165,10 @@ export default function CounterCaller() {
                 <div>
                   <p className="text-[11px] font-semibold text-ink-400 uppercase tracking-[0.15em]">Now serving</p>
                   <p className="text-[2.4rem] leading-tight font-bold text-ink-900 tnum">{serving.tokenNumber}</p>
-                  {serving.customerName && <p className="text-sm text-ink-500">{serving.customerName}</p>}
+                  <p className="text-sm text-ink-500">
+                    {serving.department?.name}
+                    {serving.customerName && ` · ${serving.customerName}`}
+                  </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button onClick={() => act(serving._id, 'hold', serving.tokenNumber)} className="px-4 py-2.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-800 text-sm font-medium transition">Hold</button>
@@ -137,27 +177,31 @@ export default function CounterCaller() {
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-ink-400">Nothing being served at this {t.counter.toLowerCase()} yet — call the next {t.token.toLowerCase()} to begin.</p>
+              <p className="text-sm text-ink-400">
+                Nothing being served here yet — call the next {t.token.toLowerCase()} to begin.
+              </p>
             )}
           </div>
         </div>
       </Card>
 
-      {/* Live queue */}
+      {/* Live queue for this counter's departments */}
       <Card pad={false}>
         <div className="flex items-center justify-between px-6 pt-5 pb-3">
-          <h2 className="text-[0.95rem] font-semibold text-ink-800">Branch queue</h2>
+          <h2 className="text-[0.95rem] font-semibold text-ink-800">
+            {counter?.room?.name ? `${counter.room.name} queue` : 'Branch queue'}
+          </h2>
           <span className="text-sm text-ink-400 tnum">{waiting.length} waiting</span>
         </div>
-        {tokens.length === 0 ? (
+        {relevant.length === 0 ? (
           <EmptyState title="The queue is empty" hint={`New ${t.customerPlural.toLowerCase()} appear here the moment they join.`} />
         ) : (
           <div className="divide-y divide-ink-100">
-            {tokens.map((x) => (
+            {relevant.map((x) => (
               <div key={x._id} className="flex items-center justify-between px-6 py-3.5">
                 <div className="flex items-center gap-3 min-w-0">
                   <span className="font-semibold text-ink-900 tnum">{x.tokenNumber}</span>
-                  <span className="text-sm text-ink-400 truncate">{x.service?.name}</span>
+                  <span className="text-sm text-ink-400 truncate">{x.department?.name}</span>
                   {x.isPriority && <Badge tone="danger">priority</Badge>}
                   <Badge tone={STATUS_TONE[x.status]}>{x.status}</Badge>
                 </div>

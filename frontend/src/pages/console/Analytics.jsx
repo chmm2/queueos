@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import api from '../../api/client';
-import { useBranchStore } from '../../store/branchStore';
+import { useParams } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { toast } from '../../store/toastStore';
 import { PageHeader, Card, StatCard, SectionTitle, Badge, btn } from '../../components/ui';
@@ -80,7 +80,7 @@ function SmartEta() {
  * no-show / abandonment rates.
  */
 export default function Analytics() {
-  const branchId = useBranchStore((s) => s.branchId);
+  const { branchId } = useParams();
   const [summary, setSummary] = useState(null);
   const [hourly, setHourly] = useState([]);
 

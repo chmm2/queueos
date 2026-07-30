@@ -30,14 +30,10 @@ const organizationSchema = new mongoose.Schema(
       brandColor: { type: String, default: '#4B4DDB' },
     },
 
-    // Industry-adaptive vocabulary (Counter vs Room vs Window, Customer vs
-    // Patient, ...). Seeded from the industry at signup; the whole UI reads
-    // these labels so it speaks each organization's language.
+    // What this organization calls the person in the queue (Patient / Guest /
+    // Client / Applicant). Used on the customer-facing join + tracking pages.
+    // Structural names (Branch/Department/Room/Counter) are intentionally fixed.
     terminology: {
-      counter: { type: String, default: 'Counter' },
-      counterPlural: { type: String, default: 'Counters' },
-      service: { type: String, default: 'Service' },
-      servicePlural: { type: String, default: 'Services' },
       customer: { type: String, default: 'Customer' },
       customerPlural: { type: String, default: 'Customers' },
       token: { type: String, default: 'Token' },

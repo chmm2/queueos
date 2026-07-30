@@ -84,8 +84,8 @@ router.post(
         role: 'Admin',
       });
 
-      // Seed a ready-to-use branch/services/counters for the chosen industry.
-      await applyTemplate(org._id, industry);
+      // Seed a ready-to-use branch + departments + rooms + counters.
+      await applyTemplate(org._id, industry, orgName);
 
       return res.status(201).json({
         organization: publicOrg(org),

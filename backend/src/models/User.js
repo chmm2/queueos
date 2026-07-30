@@ -1,9 +1,11 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
-// Tenant-plane roles. Admin owns the whole organization; Operator runs a
-// branch; Staff works a counter; User is an (optional) registered customer.
-const ROLES = ['User', 'Staff', 'Operator', 'Admin'];
+// Two roles, deliberately. Admin configures the organization (branches,
+// departments, rooms, counters, staff) and sees analytics. Staff work a
+// counter and call customers. Customers never need an account at all — they
+// join by scanning a QR — so there is no customer role here.
+const ROLES = ['Staff', 'Admin'];
 
 const userSchema = new mongoose.Schema(
   {
@@ -17,10 +19,12 @@ const userSchema = new mongoose.Schema(
     // need accounts at all (public QR flow), so only staff emails live here.
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     password: { type: String, required: true, minlength: 6 },
-    role: { type: String, enum: ROLES, default: 'User' },
+    role: { type: String, enum: ROLES, default: 'Staff' },
     phone: { type: String, trim: true },
-    // Staff/Operator are tied to a specific branch; Admin is org-wide.
+    // Staff belong to one branch; Admins are org-wide (branch stays null).
     branch: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch', default: null },
+    // Optional default counter a staff member works at.
+    counter: { type: mongoose.Schema.Types.ObjectId, ref: 'Counter', default: null },
     isActive: { type: Boolean, default: true },
 
     // Incremented on password change / forced logout so previously issued

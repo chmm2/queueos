@@ -18,7 +18,11 @@ const tokenSchema = new mongoose.Schema(
   {
     organization: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
     branch: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch', required: true, index: true },
-    service: { type: mongoose.Schema.Types.ObjectId, ref: 'Service', default: null },
+    // The queue this customer is in.
+    department: { type: mongoose.Schema.Types.ObjectId, ref: 'Department', default: null, index: true },
+    // The physical space they were sent to (derived from the room whose QR
+    // they scanned) — lets a room's display filter to just its own tokens.
+    room: { type: mongoose.Schema.Types.ObjectId, ref: 'Room', default: null, index: true },
     counter: { type: mongoose.Schema.Types.ObjectId, ref: 'Counter', default: null },
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }, // null for anonymous walk-ins
 
@@ -71,6 +75,7 @@ const tokenSchema = new mongoose.Schema(
 
 // Primary ordering index: priority first, then FIFO by issue time.
 tokenSchema.index({ organization: 1, branch: 1, status: 1, isPriority: -1, issuedAt: 1 });
+tokenSchema.index({ department: 1, status: 1, isPriority: -1, issuedAt: 1 });
 
 module.exports = mongoose.model('Token', tokenSchema);
 module.exports.STATUSES = STATUSES;

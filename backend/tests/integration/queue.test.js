@@ -34,7 +34,7 @@ describe('atomic token numbering', () => {
     const ids = {
       organization: new mongoose.Types.ObjectId(),
       branch: new mongoose.Types.ObjectId(),
-      service: new mongoose.Types.ObjectId(),
+      department: new mongoose.Types.ObjectId(),
     };
     // Fire 30 issuances at once — the exact race the atomic $inc guards against.
     const numbers = await Promise.all(
@@ -45,12 +45,12 @@ describe('atomic token numbering', () => {
     expect(numbers).toContain('A-030');
   });
 
-  test('numbering is independent per service', async () => {
+  test('numbering is independent per department', async () => {
     const base = { organization: new mongoose.Types.ObjectId(), branch: new mongoose.Types.ObjectId(), timezone: 'UTC' };
-    const s1 = new mongoose.Types.ObjectId();
-    const s2 = new mongoose.Types.ObjectId();
-    const a = await nextTokenNumber({ ...base, service: s1, prefix: 'A' });
-    const b = await nextTokenNumber({ ...base, service: s2, prefix: 'B' });
+    const d1 = new mongoose.Types.ObjectId();
+    const d2 = new mongoose.Types.ObjectId();
+    const a = await nextTokenNumber({ ...base, department: d1, prefix: 'A' });
+    const b = await nextTokenNumber({ ...base, department: d2, prefix: 'B' });
     expect(a).toBe('A-001');
     expect(b).toBe('B-001'); // separate counter, not A-002
   });
