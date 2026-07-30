@@ -40,6 +40,47 @@ Then open the `queueos-web` URL → sign in with the **Admin** demo button.
 
 ---
 
+## Deploying a new version
+
+Render's blueprint watches `main`, so **pushing is the deploy** — the three
+services rebuild automatically. `git push` and watch the dashboard; a build
+takes about five minutes.
+
+### When the data model changed
+
+If a release changes the shape of the database (renaming a collection, adding
+a unique field), the existing data and its indexes no longer fit and the app
+will fail in confusing ways — a login that hangs, a 500 on issuing a token, an
+index build that aborts. The fix is to reset the database.
+
+`npm run seed` does exactly that: it clears every collection, reconciles the
+indexes with the current schemas, and recreates the demo organization. Because
+Render's free tier has no Shell, run it **from your machine, pointed at
+Atlas**:
+
+```bash
+cd backend
+MONGO_URI="mongodb+srv://USER:PASS@cluster0.xxxx.mongodb.net/queueos" npm run seed
+```
+
+In PowerShell:
+
+```powershell
+cd backend
+$env:MONGO_URI="mongodb+srv://USER:PASS@cluster0.xxxx.mongodb.net/queueos"; npm run seed
+$env:MONGO_URI=$null   # so later local runs go back to your local database
+```
+
+> **This erases everything in that database.** It's the right move for a demo
+> or a schema change, and the wrong move once real customers are in there — at
+> that point you'd write a migration instead.
+
+The seed prints the admin login and the generated **counter credentials**.
+Counter passwords are only ever shown once, so copy them before closing the
+terminal (an admin can always issue new ones from Rooms & Counters).
+
+---
+
 ## Path A — One VPS + your domain (recommended, ~$5/month)
 
 **You need:** a domain (e.g. `queueos.app`) and a small VPS
