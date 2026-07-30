@@ -129,20 +129,39 @@ export default function Displays() {
           )}
         </Card>
 
-        {/* Waiting screen preview */}
+        {/* Waiting screen preview — a small, honest mirror of the real board */}
         <Card className="flex flex-col">
-          <MicroLabel>Waiting screen — {label}</MicroLabel>
-          <div className="flex-1 bg-board-bg rounded-tile mt-4 mb-5 px-7 py-8 min-h-[240px] flex flex-col justify-center">
-            <p className="font-mono text-[10px] tracking-[.3em] uppercase text-paper/40">{label}</p>
-            <p className="text-[86px] leading-none font-bold tracking-[-.04em] text-board-amber tnum mt-3">
-              {firstToken || '···'}
-            </p>
-            <p className="font-mono text-[11px] tracking-[.2em] uppercase text-paper/40 mt-3">now serving</p>
+          <MicroLabel>Waiting screen</MicroLabel>
+          <div className="flex-1 bg-board-bg rounded-tile mt-4 mb-5 px-8 py-9 min-h-[248px] flex flex-col">
+            <div className="flex items-start justify-between gap-4">
+              <p className="font-mono text-[10px] tracking-[.3em] uppercase text-paper/40">{label}</p>
+              <span className="font-mono text-[10px] tracking-[.2em] uppercase text-success flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-success animate-blink" /> Live
+              </span>
+            </div>
+
+            <div className="flex-1 flex flex-col justify-center">
+              {firstToken ? (
+                <>
+                  <p className="text-[86px] leading-[.95] font-bold tracking-[-.04em] text-board-amber tnum">
+                    {firstToken}
+                  </p>
+                  <p className="text-[15px] text-paper/60 mt-3">
+                    Please proceed to{' '}
+                    <span className="font-semibold text-paper">{nowServing[0].counter}</span>
+                  </p>
+                </>
+              ) : (
+                <p className="text-[17px] text-paper/35">Waiting for the first call.</p>
+              )}
+            </div>
+
             {nowServing.length > 1 && (
-              <div className="flex gap-2 mt-5">
+              <div className="flex flex-wrap gap-2 pt-5 border-t border-paper/10">
                 {nowServing.slice(1, 4).map((n, i) => (
-                  <span key={i} className="font-mono text-[13px] px-2.5 py-1 rounded-[8px] bg-paper/10 text-paper/70">
+                  <span key={i} className="font-mono text-[13px] px-2.5 py-1 rounded-[8px] bg-paper/[0.07] text-board-amber">
                     {n.tokenNumber}
+                    <span className="text-paper/35 ml-2">{n.counter}</span>
                   </span>
                 ))}
               </div>

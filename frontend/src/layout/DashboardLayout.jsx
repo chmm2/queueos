@@ -5,7 +5,6 @@ import { useAuthStore } from '../store/authStore';
 import { useBranchStore } from '../store/branchStore';
 import Toaster from '../components/Toaster';
 import { Wordmark } from '../components/Logo';
-import { LivePill } from '../components/ui';
 
 /**
  * The admin console shell.
@@ -60,12 +59,6 @@ export default function DashboardLayout() {
           </NavGroup>
         )}
 
-        {branch && (
-          <NavGroup label="Live surfaces">
-            <NavRow href={`/board/${branchId}`} live>Waiting screen</NavRow>
-            <NavRow href="/counter" live>Counter desk</NavRow>
-          </NavGroup>
-        )}
       </nav>
 
       <div className="p-3 border-t border-line">
@@ -122,12 +115,9 @@ export default function DashboardLayout() {
                 )}
               </nav>
             </div>
-            <div className="flex items-center gap-3 shrink-0">
-              <LivePill />
-              <span className="font-mono text-[11px] text-muted-3 truncate max-w-[200px] hidden md:inline">
-                {user?.email}
-              </span>
-            </div>
+            <span className="font-mono text-[11px] text-muted-3 truncate max-w-[240px] hidden md:inline shrink-0">
+              {user?.email}
+            </span>
           </div>
         </header>
 
@@ -154,32 +144,12 @@ function NavGroup({ label, children }) {
   );
 }
 
-/**
- * A nav row: 7px square marker + label. `href` (rather than `to`) opens a live
- * surface in a new tab, since those are meant to run on their own screen.
- */
-function NavRow({ to, href, end, live, children }) {
+/** A nav row: a 7px square marker plus the label. */
+function NavRow({ to, end, children }) {
   const base =
     'flex items-center gap-3 px-3 py-2 rounded-[10px] text-[14px] transition-all duration-150 min-w-0';
   const marker = (active) =>
-    `w-[7px] h-[7px] rounded-[2px] shrink-0 ${
-      live ? 'bg-clay' : active ? 'bg-espresso' : 'bg-[#CFC7B5]'
-    }`;
-
-  if (href) {
-    return (
-      <a
-        href={href}
-        target="_blank"
-        rel="noreferrer"
-        className={`${base} text-muted hover:text-ink font-normal hover:bg-surface/60`}
-      >
-        <span className={marker(false)} />
-        <span className="truncate">{children}</span>
-        <span className="ml-auto text-[11px] text-muted-3">↗</span>
-      </a>
-    );
-  }
+    `w-[7px] h-[7px] rounded-[2px] shrink-0 ${active ? 'bg-espresso' : 'bg-[#CFC7B5]'}`;
 
   return (
     <NavLink

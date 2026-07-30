@@ -249,7 +249,9 @@ router.get('/token/:id', async (req, res, next) => {
         status: token.status,
         department: token.department?.name,
         room: token.room?.name || null,
-        counter: token.counter?.code || token.counter?.name || null,
+        // Customers get the human name ("Counter 1"). The code (DCC-MH-REG-01)
+        // is an internal reference for staff and admins only.
+        counter: token.counter?.name || null,
         position,
         etaSeconds: token.predictedEtaSeconds,
         isPriority: token.isPriority,
@@ -326,7 +328,8 @@ router.get('/board/:branchId', async (req, res, next) => {
         waiting: waitingMap[String(d._id)] || 0,
         nowServing: counters
           .filter((c) => c.currentToken && String(c.currentToken.department) === String(d._id))
-          .map((c) => ({ tokenNumber: c.currentToken.tokenNumber, counter: c.code || c.name })),
+          // The public screen shows the name people can actually find.
+          .map((c) => ({ tokenNumber: c.currentToken.tokenNumber, counter: c.name })),
       })),
     });
   } catch (err) {

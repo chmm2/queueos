@@ -174,8 +174,10 @@ async function callNext({ counter, actorId }) {
       roomId: counter.room,
     });
 
+    // The customer is told where to go by NAME ("Counter 1") — the code is an
+    // internal reference and would mean nothing to them.
     notify(
-      { ...claimed.toObject(), organization: counter.organization, counterName: counter.code || counter.name },
+      { ...claimed.toObject(), organization: counter.organization, counterName: counter.name },
       'your_turn'
     ).catch(() => {});
 
