@@ -29,20 +29,20 @@ router.get('/branch/:branchId', async (req, res) => {
   res.json({ tokens });
 });
 
-// Staff/kiosk issues a walk-in token.
-router.post('/', authorize('Staff', 'Admin'), async (req, res, next) => {
+// Walk-in issued at the desk by the counter itself.
+router.post('/', authorize('Counter'), async (req, res, next) => {
   try {
-    const { branchId, departmentId, roomId, isPriority, customerName, customerPhone } = req.body;
+    const { departmentId, isPriority, customerName, customerPhone } = req.body;
     const result = await issueToken({
       organization: req.orgId,
-      branchId,
+      branchId: req.counter.branch,
       departmentId,
-      roomId,
+      roomId: req.counter.room?._id || req.counter.room,
       source: 'walk-in',
       isPriority,
       customerName,
       customerPhone,
-      actorId: req.user._id,
+      actorId: req.counter._id,
     });
     res.status(201).json(result);
   } catch (err) {
@@ -50,13 +50,17 @@ router.post('/', authorize('Staff', 'Admin'), async (req, res, next) => {
   }
 });
 
-// Call the next eligible token to a counter (race-safe).
-router.post('/call-next', authorize('Staff', 'Admin'), async (req, res, next) => {
+/**
+ * Call the next eligible customer. A counter always calls for ITSELF — the
+ * counter is the signed-in principal, so there's no counterId to pass and no
+ * way to call on another desk's behalf.
+ */
+router.post('/call-next', authorize('Counter'), async (req, res, next) => {
   try {
-    const counter = await Counter.findById(req.body.counterId);
-    if (!assertSameOrg(req, res, counter)) return;
+    const counter = await Counter.findById(req.counter._id);
+    if (!counter) return res.status(404).json({ message: 'Counter not found' });
 
-    const token = await callNext({ counter, actorId: req.user._id });
+    const token = await callNext({ counter, actorId: counter._id });
     if (!token) return res.json({ token: null, message: 'Queue is empty' });
     res.json({ token });
   } catch (err) {
@@ -65,12 +69,22 @@ router.post('/call-next', authorize('Staff', 'Admin'), async (req, res, next) =>
 });
 
 /**
- * Shared handler for lifecycle transitions: fetch, assert tenant, apply the
- * state-machine transition, refresh that department's ETAs, broadcast.
+ * Shared handler for lifecycle transitions. A counter may only act on the
+ * token it is currently serving.
  */
 async function doTransition(req, res, toStatus) {
   const token = await Token.findById(req.params.id);
-  if (!assertSameOrg(req, res, token)) return;
+  if (!assertSameOrg(req, res, token)) return null;
+
+  // A counter may act on the token it is serving, or on one waiting in its own
+  // room (so it can recall someone a colleague skipped).
+  const myRoom = String(req.counter.room?._id || req.counter.room || '');
+  const isMine = String(token.counter || '') === String(req.counter._id);
+  const inMyRoom = myRoom && String(token.room || '') === myRoom;
+  if (!isMine && !inMyRoom) {
+    res.status(403).json({ message: 'That token belongs to another counter' });
+    return null;
+  }
 
   const updated = await stateMachine.transition(token._id, toStatus, req.user._id, req.body);
 
@@ -89,7 +103,7 @@ const lifecycle = [
 ];
 
 lifecycle.forEach(([path, status]) => {
-  router.patch(`/:id/${path}`, authorize('Staff', 'Admin'), async (req, res) => {
+  router.patch(`/:id/${path}`, authorize('Counter'), async (req, res) => {
     try {
       const t = await doTransition(req, res, status);
       if (t) res.json({ token: t });
@@ -99,11 +113,10 @@ lifecycle.forEach(([path, status]) => {
   });
 });
 
-router.patch('/:id/complete', authorize('Staff', 'Admin'), async (req, res) => {
+router.patch('/:id/complete', authorize('Counter'), async (req, res) => {
   try {
     const t = await doTransition(req, res, 'completed');
     if (t) {
-      // Learn from this real completion (off the response path).
       recalibrateDepartmentAvg(t.department).catch(() => {});
       res.json({ token: t });
     }
@@ -112,7 +125,7 @@ router.patch('/:id/complete', authorize('Staff', 'Admin'), async (req, res) => {
   }
 });
 
-router.patch('/:id/miss', authorize('Staff', 'Admin'), async (req, res) => {
+router.patch('/:id/miss', authorize('Counter'), async (req, res) => {
   try {
     const token = await Token.findById(req.params.id);
     if (!assertSameOrg(req, res, token)) return;
@@ -124,8 +137,8 @@ router.patch('/:id/miss', authorize('Staff', 'Admin'), async (req, res) => {
   }
 });
 
-// Transfer a token to another department (e.g. Consultation -> Pharmacy).
-router.patch('/:id/transfer', authorize('Staff', 'Admin'), async (req, res, next) => {
+// Send a customer on to another department (e.g. Consultation -> Pharmacy).
+router.patch('/:id/transfer', authorize('Counter'), async (req, res, next) => {
   try {
     const { departmentId } = req.body;
     const token = await Token.findById(req.params.id);
@@ -136,7 +149,14 @@ router.patch('/:id/transfer', authorize('Staff', 'Admin'), async (req, res, next
     const fromDepartment = token.department;
     if (token.counter) await Counter.findByIdAndUpdate(token.counter, { currentToken: null });
 
+    // Move them to a room that handles the destination department.
+    const Room = require('../models/Room');
+    const destRoom = await Room.findOne({
+      branch: token.branch, departments: department._id, isActive: true,
+    }).select('_id');
+
     token.department = department._id;
+    token.room = destRoom?._id || null;
     token.status = 'waiting';
     token.counter = null;
     token.calledAt = null;

@@ -2,10 +2,10 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 /**
- * Single source of truth for the logged-in staff/operator/admin. Stores the
- * access + refresh tokens and the user (with their organization). Route
- * guards and UI read `role` from here; the JWTs stay opaque to the rest of
- * the app.
+ * Who is signed in. There are two kinds of principal:
+ *
+ *   principal: 'user'    an administrator, signed in as themselves
+ *   principal: 'counter' a machine at a desk, signed in as the counter itself
  *
  * `token` mirrors `accessToken` so the axios/socket clients that read
  * `state.token` keep working unchanged.
@@ -16,25 +16,37 @@ export const useAuthStore = create(
       token: null, // == accessToken (compat alias)
       accessToken: null,
       refreshToken: null,
-      user: null,
+      principal: null, // 'user' | 'counter'
+      user: null, // set when principal === 'user'
+      counter: null, // set when principal === 'counter'
       organization: null,
 
-      login: ({ accessToken, refreshToken, user, organization }) =>
+      login: ({ accessToken, refreshToken, user, counter, organization, principal }) =>
         set({
           token: accessToken,
           accessToken,
           refreshToken,
-          user,
-          organization: organization || user?.organization || null,
+          principal: principal || (counter ? 'counter' : 'user'),
+          user: user || null,
+          counter: counter || null,
+          organization: organization || null,
         }),
 
       setTokens: ({ accessToken, refreshToken }) =>
         set({ token: accessToken, accessToken, refreshToken }),
 
-      logout: () => set({ token: null, accessToken: null, refreshToken: null, user: null, organization: null }),
+      // Keep the counter's own record fresh (status, departments) after edits.
+      setCounter: (counter) => set({ counter }),
 
-      hasRole: (...roles) => (state) => roles.includes(state.user?.role),
+      logout: () =>
+        set({
+          token: null, accessToken: null, refreshToken: null,
+          principal: null, user: null, counter: null, organization: null,
+        }),
     }),
     { name: 'auth-storage' }
   )
 );
+
+/** True when the signed-in principal is an administrator. */
+export const useIsAdmin = () => useAuthStore((s) => s.principal === 'user');

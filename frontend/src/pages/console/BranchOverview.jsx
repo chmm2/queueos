@@ -65,9 +65,9 @@ export default function BranchOverview() {
 
   const sections = [
     ['departments', 'Departments', 'The queues this branch offers'],
-    ['rooms', 'Rooms & Counters', 'Physical spaces and the desks inside them'],
-    ['staff', 'Staff', 'Who works here, and at which counter'],
+    ['rooms', 'Rooms & Counters', 'Physical spaces and the desk logins inside them'],
     ['displays', 'Displays & QR', 'A screen and join code per room'],
+    ['analytics', 'Analytics', 'Wait times, volume and no-shows'],
   ];
 
   return (

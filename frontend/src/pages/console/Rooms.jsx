@@ -8,8 +8,8 @@ import { PageHeader, Card, SectionTitle, Badge, EmptyState, btn, field } from '.
  * Rooms & Counters — the physical layout of a branch.
  *
  * A Room is a space (Registration, Pharmacy) that owns a display and a QR.
- * A Counter is a desk inside that room, carrying a unique printable code and
- * serving some or all of the room's departments.
+ * A Counter is a desk inside it — and also a LOGIN: creating one hands back an
+ * email + password for the machine at that desk.
  */
 const STATUS_TONE = { open: 'success', paused: 'warning', closed: 'neutral' };
 
@@ -17,26 +17,22 @@ export default function Rooms() {
   const { branchId } = useParams();
   const [rooms, setRooms] = useState([]);
   const [departments, setDepartments] = useState([]);
-  const [staff, setStaff] = useState([]);
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({ name: '', code: '', departments: [] });
 
   const reload = useCallback(async () => {
-    const [r, d, u] = await Promise.all([
+    const [r, d] = await Promise.all([
       api.get(`/rooms/branch/${branchId}`),
       api.get(`/departments/branch/${branchId}`),
-      api.get(`/users?branch=${branchId}`),
     ]);
     setRooms(r.data.rooms);
     setDepartments(d.data.departments);
-    setStaff(u.data.users.filter((x) => x.role === 'Staff'));
   }, [branchId]);
 
   useEffect(() => { reload(); }, [reload]);
 
   async function createRoom(e) {
     e.preventDefault();
-    if (!form.departments.length) return toast.error('Pick at least one department for this room');
     try {
       await api.post('/rooms', { ...form, branch: branchId });
       toast.success(`Room “${form.name}” created`);
@@ -49,6 +45,7 @@ export default function Rooms() {
   }
 
   async function removeRoom(id, name) {
+    if (!confirm(`Remove the ${name} room?`)) return;
     try {
       await api.delete(`/rooms/${id}`);
       toast.info(`“${name}” removed`);
@@ -68,23 +65,9 @@ export default function Rooms() {
     <div className="max-w-4xl mx-auto animate-rise">
       <PageHeader
         title="Rooms & Counters"
-        description="Each room is a physical space with its own display and QR. Counters are the desks inside it."
-        actions={
-          <button className={btn.primary} onClick={() => setShowNew((s) => !s)} disabled={departments.length === 0}>
-            {showNew ? 'Cancel' : 'Add room'}
-          </button>
-        }
+        description="Each room is a physical space with its own display and QR. Counters are the desks inside it — and each one is its own login."
+        actions={<button className={btn.primary} onClick={() => setShowNew((s) => !s)}>{showNew ? 'Cancel' : 'Add room'}</button>}
       />
-
-      {departments.length === 0 && (
-        <Card className="mb-6">
-          <EmptyState
-            title="Add departments first"
-            hint="A room serves one or more departments, so create those before laying out the rooms."
-            action={<Link to={`/branches/${branchId}/departments`} className={btn.primary}>Go to Departments</Link>}
-          />
-        </Card>
-      )}
 
       {showNew && (
         <Card className="mb-6">
@@ -96,29 +79,31 @@ export default function Rooms() {
               <input maxLength={6} placeholder="Short code (REG)" value={form.code}
                 onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} className={field} />
             </div>
-            <div>
-              <p className="text-[13px] font-medium text-ink-600 mb-2">
-                Departments served in this room — pick several to combine them under one screen
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {departments.map((d) => (
-                  <button key={d._id} type="button" onClick={() => toggleDept(d._id)}
-                    className={`px-3 py-1.5 rounded-full text-sm border transition ${
-                      form.departments.includes(d._id)
-                        ? 'bg-brand-50 border-brand-300 text-brand-700 font-medium'
-                        : 'border-ink-200 text-ink-600 hover:border-ink-300'
-                    }`}>
-                    {d.name}
-                  </button>
-                ))}
+            {departments.length > 0 && (
+              <div>
+                <p className="text-[13px] font-medium text-ink-600 mb-2">
+                  Departments served here <span className="text-ink-400 font-normal">— optional, you can set this later</span>
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {departments.map((d) => (
+                    <button key={d._id} type="button" onClick={() => toggleDept(d._id)}
+                      className={`px-3 py-1.5 rounded-full text-sm border transition ${
+                        form.departments.includes(d._id)
+                          ? 'bg-brand-50 border-brand-300 text-brand-700 font-medium'
+                          : 'border-ink-200 text-ink-600 hover:border-ink-300'
+                      }`}>
+                      {d.name}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
             <div><button className={btn.primary}>Create room</button></div>
           </form>
         </Card>
       )}
 
-      {rooms.length === 0 && !showNew && departments.length > 0 && (
+      {rooms.length === 0 && !showNew && (
         <Card><EmptyState title="No rooms yet" hint="Add a room to give a physical space its own queue display and QR code." /></Card>
       )}
 
@@ -127,7 +112,7 @@ export default function Rooms() {
           <RoomCard
             key={room._id}
             room={room}
-            staff={staff}
+            allDepartments={departments}
             branchId={branchId}
             onChange={reload}
             onRemove={() => removeRoom(room._id, room.name)}
@@ -138,50 +123,58 @@ export default function Rooms() {
   );
 }
 
-/** One room, with the counters inside it. */
-function RoomCard({ room, staff, branchId, onChange, onRemove }) {
+/** One room: its departments (editable) and the counters inside it. */
+function RoomCard({ room, allDepartments, branchId, onChange, onRemove }) {
+  const [editingDepts, setEditingDepts] = useState(false);
+  const [picked, setPicked] = useState((room.departments || []).map((d) => d._id));
   const [adding, setAdding] = useState(false);
-  const [name, setName] = useState('');
-  const [picked, setPicked] = useState([]);
+  const [newCounter, setNewCounter] = useState({ name: '', departments: [] });
+  const [credentials, setCredentials] = useState(null); // shown once after create/reset
 
   const roomDepts = room.departments || [];
+
+  async function saveDepts() {
+    try {
+      await api.patch(`/rooms/${room._id}`, { departments: picked });
+      toast.success('Room departments updated');
+      setEditingDepts(false);
+      onChange();
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Could not update');
+    }
+  }
 
   async function addCounter(e) {
     e.preventDefault();
     try {
       const { data } = await api.post('/counters', {
         room: room._id,
-        name: name || undefined,
-        departments: picked,
+        name: newCounter.name || undefined,
+        departments: newCounter.departments,
       });
-      toast.success(`Counter ${data.counter.code} added`);
-      setName(''); setPicked([]); setAdding(false);
+      setCredentials({ ...data.credentials, code: data.counter.code });
+      toast.success(`Counter ${data.counter.code} created`);
+      setNewCounter({ name: '', departments: [] });
+      setAdding(false);
       onChange();
     } catch (e2) {
       toast.error(e2.response?.data?.message || 'Could not add counter');
     }
   }
 
-  async function assign(counterId, staffId) {
-    if (!staffId) return;
-    await api.patch(`/counters/${counterId}/assign`, { staffId });
-    toast.success('Staff assigned · counter open');
-    onChange();
+  async function resetPassword(id, code) {
+    if (!confirm(`Issue a new password for ${code}? The current one stops working.`)) return;
+    const { data } = await api.post(`/counters/${id}/reset-password`);
+    setCredentials({ ...data.credentials, code });
+    toast.success('New password issued');
   }
-  async function pause(id) {
-    const { data } = await api.patch(`/counters/${id}/pause`);
-    toast.info(`Counter ${data.counter.status}`);
-    onChange();
-  }
-  async function close(id) { await api.patch(`/counters/${id}/close`); toast.info('Counter closed'); onChange(); }
+
   async function removeCounter(id, code) {
-    if (!confirm(`Remove counter ${code}?`)) return;
+    if (!confirm(`Remove counter ${code}? Its login stops working.`)) return;
     await api.delete(`/counters/${id}`);
     toast.info(`${code} removed`);
     onChange();
   }
-
-  const togglePick = (id) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
   return (
     <Card pad={false}>
@@ -192,9 +185,31 @@ function RoomCard({ room, staff, branchId, onChange, onRemove }) {
             {room.name}
             {room.code && <Badge tone="neutral">{room.code}</Badge>}
           </p>
-          <p className="text-xs text-ink-400 mt-1">
-            {roomDepts.length ? roomDepts.map((d) => d.name).join(' · ') : 'No departments assigned'}
-          </p>
+          {!editingDepts ? (
+            <p className="text-xs text-ink-400 mt-1">
+              {roomDepts.length ? roomDepts.map((d) => d.name).join(' · ') : 'No departments yet'}
+              <button onClick={() => { setPicked(roomDepts.map((d) => d._id)); setEditingDepts(true); }}
+                className="ml-2 text-brand-600 hover:text-brand-700 font-medium">Edit</button>
+            </p>
+          ) : (
+            <div className="mt-2">
+              <div className="flex flex-wrap gap-2 mb-2">
+                {allDepartments.map((d) => (
+                  <button key={d._id} type="button"
+                    onClick={() => setPicked((p) => (p.includes(d._id) ? p.filter((x) => x !== d._id) : [...p, d._id]))}
+                    className={`px-3 py-1.5 rounded-full text-sm border transition ${
+                      picked.includes(d._id) ? 'bg-brand-50 border-brand-300 text-brand-700 font-medium' : 'border-ink-200 text-ink-600'
+                    }`}>
+                    {d.name}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button onClick={saveDepts} className={btn.primary}>Save</button>
+                <button onClick={() => setEditingDepts(false)} className={btn.secondary}>Cancel</button>
+              </div>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Link to={`/branches/${branchId}/displays?room=${room._id}`} className={btn.ghost}>Display &amp; QR</Link>
@@ -202,7 +217,26 @@ function RoomCard({ room, staff, branchId, onChange, onRemove }) {
         </div>
       </div>
 
-      {/* Counters inside this room */}
+      {/* Credentials banner — the only time a password is readable */}
+      {credentials && (
+        <div className="mx-6 mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <p className="text-sm font-semibold text-emerald-800">
+            Sign-in details for {credentials.code} — copy these now
+          </p>
+          <p className="text-xs text-emerald-700 mt-0.5 mb-3">
+            This password is shown once. Give it to the team who'll use that machine.
+          </p>
+          <div className="grid sm:grid-cols-2 gap-2 font-mono text-[13px]">
+            <div className="bg-white rounded-lg px-3 py-2 border border-emerald-200 break-all">{credentials.email}</div>
+            <div className="bg-white rounded-lg px-3 py-2 border border-emerald-200">{credentials.password}</div>
+          </div>
+          <button onClick={() => setCredentials(null)} className="text-xs text-emerald-700 hover:text-emerald-900 mt-3 font-medium">
+            I've saved these — dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Counters */}
       <div className="px-6 py-4">
         <div className="flex items-center justify-between mb-3">
           <p className="text-[13px] font-semibold text-ink-700">
@@ -214,62 +248,124 @@ function RoomCard({ room, staff, branchId, onChange, onRemove }) {
         </div>
 
         {(room.counters || []).length === 0 && !adding && (
-          <p className="text-sm text-ink-400 py-2">No counters here yet — add one so staff can serve this room.</p>
+          <p className="text-sm text-ink-400 py-2">No counters here yet — add one to create a desk login.</p>
         )}
 
         <div className="space-y-2">
           {(room.counters || []).map((c) => (
-            <div key={c._id} className="flex flex-wrap items-center justify-between gap-3 border border-ink-100 rounded-xl px-4 py-3">
-              <div className="min-w-0">
-                <p className="font-medium text-ink-900 flex items-center gap-2 flex-wrap">
-                  <span className="font-mono text-[13px] bg-ink-100 rounded px-1.5 py-0.5">{c.code}</span>
-                  {c.name}
-                  <Badge tone={STATUS_TONE[c.status]}>{c.status}</Badge>
-                </p>
-                <p className="text-xs text-ink-400 mt-0.5">
-                  {c.departments?.length ? c.departments.map((d) => d.name).join(', ') : 'All departments in this room'}
-                  {c.assignedStaff?.name && ` · ${c.assignedStaff.name}`}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <select defaultValue="" onChange={(e) => assign(c._id, e.target.value)}
-                  className="px-2.5 py-1.5 rounded-lg border border-ink-200 text-sm bg-white">
-                  <option value="">Assign staff…</option>
-                  {staff.map((s) => <option key={s._id} value={s._id}>{s.name}</option>)}
-                </select>
-                <button onClick={() => pause(c._id)} className="px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 text-sm">
-                  {c.status === 'paused' ? 'Resume' : 'Pause'}
-                </button>
-                <button onClick={() => close(c._id)} className="px-2.5 py-1.5 rounded-lg hover:bg-ink-100 text-ink-500 text-sm">Close</button>
-                <button onClick={() => removeCounter(c._id, c.code)} className="text-sm text-ink-400 hover:text-red-600 px-1">✕</button>
-              </div>
-            </div>
+            <CounterRow
+              key={c._id}
+              counter={c}
+              roomDepts={roomDepts}
+              onChange={onChange}
+              onReset={() => resetPassword(c._id, c.code)}
+              onRemove={() => removeCounter(c._id, c.code)}
+            />
           ))}
         </div>
 
         {adding && (
           <form onSubmit={addCounter} className="mt-3 border border-ink-200 rounded-xl p-4 grid gap-3 bg-ink-50/50">
-            <input placeholder="Counter name (optional — defaults to Counter N)" value={name}
-              onChange={(e) => setName(e.target.value)} className={field} />
-            <div>
-              <p className="text-xs text-ink-500 mb-2">
-                Which of this room's departments does it handle? Leave empty for all of them.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {roomDepts.map((d) => (
-                  <button key={d._id} type="button" onClick={() => togglePick(d._id)}
-                    className={`px-3 py-1.5 rounded-full text-sm border transition ${
-                      picked.includes(d._id) ? 'bg-brand-50 border-brand-300 text-brand-700' : 'border-ink-200 text-ink-600'
-                    }`}>
-                    {d.name}
-                  </button>
-                ))}
+            <input placeholder="Counter name (optional — defaults to Counter N)" value={newCounter.name}
+              onChange={(e) => setNewCounter({ ...newCounter, name: e.target.value })} className={field} />
+            {roomDepts.length > 0 ? (
+              <div>
+                <p className="text-xs text-ink-500 mb-2">
+                  Which of this room's departments does it handle? Leave empty for all of them.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {roomDepts.map((d) => (
+                    <button key={d._id} type="button"
+                      onClick={() => setNewCounter((n) => ({
+                        ...n,
+                        departments: n.departments.includes(d._id)
+                          ? n.departments.filter((x) => x !== d._id)
+                          : [...n.departments, d._id],
+                      }))}
+                      className={`px-3 py-1.5 rounded-full text-sm border transition ${
+                        newCounter.departments.includes(d._id) ? 'bg-brand-50 border-brand-300 text-brand-700' : 'border-ink-200 text-ink-600'
+                      }`}>
+                      {d.name}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-            <div><button className={btn.primary}>Add counter</button></div>
+            ) : (
+              <p className="text-xs text-amber-700">
+                This room has no departments yet — the counter will serve nothing until you add some above.
+              </p>
+            )}
+            <div><button className={btn.primary}>Create counter &amp; login</button></div>
           </form>
         )}
       </div>
     </Card>
+  );
+}
+
+/** One counter row, with inline editing of which departments it handles. */
+function CounterRow({ counter: c, roomDepts, onChange, onReset, onRemove }) {
+  const [editing, setEditing] = useState(false);
+  const [picked, setPicked] = useState((c.departments || []).map((d) => d._id || d));
+
+  async function save() {
+    try {
+      await api.patch(`/counters/${c._id}`, { departments: picked });
+      toast.success(`${c.code} updated`);
+      setEditing(false);
+      onChange();
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Could not update');
+    }
+  }
+
+  return (
+    <div className="border border-ink-100 rounded-xl px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-medium text-ink-900 flex items-center gap-2 flex-wrap">
+            <span className="font-mono text-[13px] bg-ink-100 rounded px-1.5 py-0.5">{c.code}</span>
+            {c.name}
+            <Badge tone={STATUS_TONE[c.status]}>{c.status}</Badge>
+          </p>
+          <p className="text-xs text-ink-400 mt-0.5 break-all">{c.email}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={onReset} className="px-2.5 py-1.5 rounded-lg hover:bg-ink-100 text-ink-500 text-sm">Reset password</button>
+          <button onClick={onRemove} className="text-sm text-ink-400 hover:text-red-600 px-1">✕</button>
+        </div>
+      </div>
+
+      <div className="mt-2">
+        {!editing ? (
+          <p className="text-xs text-ink-500">
+            Handles: {c.departments?.length ? c.departments.map((d) => d.name).join(', ') : 'all departments in this room'}
+            {roomDepts.length > 0 && (
+              <button onClick={() => { setPicked((c.departments || []).map((d) => d._id || d)); setEditing(true); }}
+                className="ml-2 text-brand-600 hover:text-brand-700 font-medium">Change</button>
+            )}
+          </p>
+        ) : (
+          <div>
+            <div className="flex flex-wrap gap-2 my-2">
+              {roomDepts.map((d) => (
+                <button key={d._id} type="button"
+                  onClick={() => setPicked((p) => (p.includes(d._id) ? p.filter((x) => x !== d._id) : [...p, d._id]))}
+                  className={`px-3 py-1.5 rounded-full text-sm border transition ${
+                    picked.includes(d._id) ? 'bg-brand-50 border-brand-300 text-brand-700' : 'border-ink-200 text-ink-600'
+                  }`}>
+                  {d.name}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-ink-400 mb-2">Select none to handle everything in this room.</p>
+            <div className="flex gap-2">
+              <button onClick={save} className={btn.primary}>Save</button>
+              <button onClick={() => setEditing(false)} className={btn.secondary}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

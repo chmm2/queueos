@@ -2,7 +2,7 @@ const Branch = require('../models/Branch');
 const Department = require('../models/Department');
 const Room = require('../models/Room');
 const Counter = require('../models/Counter');
-const { buildCounterCode } = require('./codeService');
+const { buildCounterCode, counterEmail, generatePassword } = require('./codeService');
 
 /**
  * Industry templates — the proof that every vertical is CONFIGURATION, not a
@@ -101,9 +101,11 @@ const DEFAULT_TEMPLATE = {
 };
 
 /**
- * Seeds a branch + departments + rooms + counters for an org.
+ * Seeds a branch + departments + rooms + counters for an org. Each counter is
+ * also a login identity, so it gets generated credentials; the plaintext
+ * passwords are returned so the caller can surface them once to the admin.
  */
-async function applyTemplate(orgId, industry, orgName = 'Org') {
+async function applyTemplate(orgId, industry, orgName = 'Org', orgSlug = 'org') {
   const tpl = TEMPLATES[industry] || DEFAULT_TEMPLATE;
 
   const branch = await Branch.create({ organization: orgId, name: tpl.branch, timezone: 'UTC' });
@@ -121,8 +123,8 @@ async function applyTemplate(orgId, industry, orgName = 'Org') {
   const byName = Object.fromEntries(departments.map((d) => [d.name, d._id]));
 
   const rooms = [];
-  const counters = [];
   const usedCodes = [];
+  const credentials = []; // { code, email, password } — shown once to the admin
 
   for (const r of tpl.rooms) {
     // eslint-disable-next-line no-await-in-loop
@@ -140,20 +142,27 @@ async function applyTemplate(orgId, industry, orgName = 'Org') {
         orgName, branchName: tpl.branch, room, existingCodes: usedCodes,
       });
       usedCodes.push(code);
-      counters.push({
+      const email = counterEmail(code, orgSlug);
+      const password = generatePassword();
+      credentials.push({ code, email, password });
+
+      // Created one at a time so the password-hashing hook runs per document.
+      // eslint-disable-next-line no-await-in-loop
+      await Counter.create({
         organization: orgId,
         branch: branch._id,
         room: room._id,
         name: `Counter ${i}`,
         code,
+        email,
+        password,
         departments: [], // empty = serves everything its room handles
         status: 'closed',
       });
     }
   }
-  await Counter.create(counters);
 
-  return { branch, departments, rooms };
+  return { branch, departments, rooms, credentials };
 }
 
 module.exports = { applyTemplate, TEMPLATES };

@@ -6,66 +6,86 @@ const Organization = require('../models/Organization');
 const User = require('../models/User');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requireOrg, scoped, assertSameOrg } = require('../middleware/tenant');
-const { buildCounterCode } = require('../services/codeService');
+const { buildCounterCode, counterEmail, generatePassword } = require('../services/codeService');
 
 const router = express.Router();
 router.use(authenticate, requireOrg);
 
-router.get('/branch/:branchId', async (req, res) => {
+// The counter's own identity — what the machine at the desk sees on sign-in.
+router.get('/me', authorize('Counter'), async (req, res) => {
+  const counter = await Counter.findById(req.counter._id)
+    .select('-password')
+    .populate('room', 'name code departments')
+    .populate('departments', 'name tokenPrefix');
+  res.json({ counter });
+});
+
+router.get('/branch/:branchId', authorize('Admin'), async (req, res) => {
   const counters = await Counter.find(scoped(req, { branch: req.params.branchId }))
-    .populate('assignedStaff', 'name email')
+    .select('-password')
     .populate('departments', 'name tokenPrefix')
     .populate('room', 'name code');
   res.json({ counters });
 });
 
-router.get('/room/:roomId', async (req, res) => {
-  const counters = await Counter.find(scoped(req, { room: req.params.roomId }))
-    .populate('assignedStaff', 'name email')
-    .populate('departments', 'name tokenPrefix');
-  res.json({ counters });
-});
-
 /**
- * Create a counter inside a room. Its unique printable code (DCC-MH-REG-01)
- * is generated from the org/branch/room names unless one is supplied.
+ * Create a counter inside a room. This also creates its LOGIN: an email
+ * derived from the counter code and a generated password, which is returned
+ * exactly once so the admin can hand it to the team. Only the hash is stored.
  */
 router.post('/', authorize('Admin'), async (req, res) => {
-  const { room: roomId, name, departments = [], code } = req.body;
+  const { room: roomId, name, departments = [], code, email, password } = req.body;
 
   const room = await Room.findById(roomId);
   if (!assertSameOrg(req, res, room)) return;
 
   // A counter can only serve departments its room actually handles.
   const roomDepts = new Set((room.departments || []).map(String));
-  const invalid = departments.filter((d) => !roomDepts.has(String(d)));
-  if (invalid.length) {
-    return res.status(400).json({ message: 'A counter can only serve departments assigned to its room' });
+  if (departments.some((d) => !roomDepts.has(String(d)))) {
+    return res.status(400).json({ message: "A counter can only serve departments assigned to its room" });
   }
 
   const [org, branch, siblings] = await Promise.all([
-    Organization.findById(req.orgId).select('name'),
+    Organization.findById(req.orgId).select('name slug'),
     Branch.findById(room.branch).select('name'),
     Counter.find({ organization: req.orgId }).select('code'),
   ]);
+
+  const finalCode = (code || buildCounterCode({
+    orgName: org?.name, branchName: branch?.name, room, existingCodes: siblings.map((c) => c.code),
+  })).toUpperCase();
+
+  const finalEmail = (email || counterEmail(finalCode, org?.slug)).toLowerCase();
+  const plainPassword = password || generatePassword();
+
+  // The email must be free across BOTH account types.
+  const [takenByUser, takenByCounter] = await Promise.all([
+    User.exists({ email: finalEmail }),
+    Counter.exists({ email: finalEmail }),
+  ]);
+  if (takenByUser || takenByCounter) {
+    return res.status(409).json({ message: 'That sign-in email is already in use' });
+  }
 
   const counter = await Counter.create({
     organization: req.orgId,
     branch: room.branch,
     room: room._id,
     name: name || `Counter ${(await Counter.countDocuments({ room: room._id })) + 1}`,
-    code: code || buildCounterCode({
-      orgName: org?.name,
-      branchName: branch?.name,
-      room,
-      existingCodes: siblings.map((c) => c.code),
-    }),
+    code: finalCode,
+    email: finalEmail,
+    password: plainPassword,
     departments,
   });
 
-  res.status(201).json({ counter });
+  // `credentials` is the ONLY time the password is ever readable.
+  res.status(201).json({
+    counter: counter.toSafeObject(),
+    credentials: { email: finalEmail, password: plainPassword },
+  });
 });
 
+// Edit a counter — including clubbing several of its room's departments.
 router.patch('/:id', authorize('Admin'), async (req, res) => {
   const counter = await Counter.findById(req.params.id);
   if (!assertSameOrg(req, res, counter)) return;
@@ -74,61 +94,69 @@ router.patch('/:id', authorize('Admin'), async (req, res) => {
     const room = await Room.findById(counter.room);
     const roomDepts = new Set((room?.departments || []).map(String));
     if (req.body.departments.some((d) => !roomDepts.has(String(d)))) {
-      return res.status(400).json({ message: 'A counter can only serve departments assigned to its room' });
+      return res.status(400).json({
+        message: "This counter's room doesn't handle that department — add it to the room first",
+      });
     }
     counter.departments = req.body.departments;
   }
   if (req.body.name !== undefined) counter.name = req.body.name;
-  if (req.body.code !== undefined) counter.code = req.body.code;
+  if (req.body.code !== undefined) counter.code = req.body.code.toUpperCase();
 
   await counter.save();
-  res.json({ counter });
+  res.json({ counter: counter.toSafeObject() });
 });
 
-// Assign staff and open the counter for serving.
-router.patch('/:id/assign', authorize('Admin'), async (req, res) => {
+// Issue a fresh password (returned once) and invalidate existing sessions.
+router.post('/:id/reset-password', authorize('Admin'), async (req, res) => {
   const counter = await Counter.findById(req.params.id);
   if (!assertSameOrg(req, res, counter)) return;
+  const plainPassword = generatePassword();
+  counter.password = plainPassword;
+  counter.tokenVersion += 1; // sign the machine out everywhere
+  await counter.save();
+  res.json({ credentials: { email: counter.email, password: plainPassword } });
+});
 
-  if (req.body.staffId) {
-    const staff = await User.findById(req.body.staffId);
-    if (!assertSameOrg(req, res, staff)) return;
-    counter.assignedStaff = staff._id;
-    // Remember this as the staff member's default counter.
-    staff.counter = counter._id;
-    staff.branch = counter.branch;
-    await staff.save();
-  } else {
-    counter.assignedStaff = null;
+// Open / pause / close. A counter can control itself; an admin can too.
+router.patch('/:id/pause', authorize('Admin', 'Counter'), async (req, res) => {
+  const counter = await Counter.findById(req.params.id);
+  if (!assertSameOrg(req, res, counter)) return;
+  if (req.user.role === 'Counter' && String(counter._id) !== String(req.counter._id)) {
+    return res.status(403).json({ message: 'A counter can only control itself' });
+  }
+  counter.status = counter.status === 'paused' ? 'open' : 'paused';
+  await counter.save();
+  res.json({ counter: counter.toSafeObject() });
+});
+
+router.patch('/:id/open', authorize('Admin', 'Counter'), async (req, res) => {
+  const counter = await Counter.findById(req.params.id);
+  if (!assertSameOrg(req, res, counter)) return;
+  if (req.user.role === 'Counter' && String(counter._id) !== String(req.counter._id)) {
+    return res.status(403).json({ message: 'A counter can only control itself' });
   }
   counter.status = 'open';
   await counter.save();
-  res.json({ counter });
+  res.json({ counter: counter.toSafeObject() });
 });
 
-// Pause = temporarily stop calling (excluded from ETA capacity); resume reopens.
-router.patch('/:id/pause', authorize('Admin', 'Staff'), async (req, res) => {
+router.patch('/:id/close', authorize('Admin', 'Counter'), async (req, res) => {
   const counter = await Counter.findById(req.params.id);
   if (!assertSameOrg(req, res, counter)) return;
-  counter.status = counter.status === 'paused' ? 'open' : 'paused';
-  await counter.save();
-  res.json({ counter });
-});
-
-router.patch('/:id/close', authorize('Admin', 'Staff'), async (req, res) => {
-  const counter = await Counter.findById(req.params.id);
-  if (!assertSameOrg(req, res, counter)) return;
+  if (req.user.role === 'Counter' && String(counter._id) !== String(req.counter._id)) {
+    return res.status(403).json({ message: 'A counter can only control itself' });
+  }
   counter.status = 'closed';
   counter.currentToken = null;
   await counter.save();
-  res.json({ counter });
+  res.json({ counter: counter.toSafeObject() });
 });
 
 router.delete('/:id', authorize('Admin'), async (req, res) => {
   const counter = await Counter.findById(req.params.id);
   if (!assertSameOrg(req, res, counter)) return;
   await Counter.deleteOne({ _id: counter._id });
-  await User.updateMany({ counter: counter._id }, { counter: null });
   res.json({ message: 'Counter removed' });
 });
 

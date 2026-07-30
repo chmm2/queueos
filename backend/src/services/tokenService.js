@@ -1,14 +1,15 @@
 const jwt = require('jsonwebtoken');
 
 /**
- * Centralized JWT minting/verification for all token kinds:
- *   - access  : short-lived, sent on every API call (Authorization header)
+ * Centralized JWT minting/verification for every token kind:
+ *   - access  : short-lived, sent on every API call
  *   - refresh : long-lived, exchanged for a new access token
- *   - qr      : short-lived branch-join token embedded in the rotating QR
+ *   - qr      : short-lived room-join token embedded in the rotating QR
  *   - session : per-customer token so an accountless customer can track/cancel
  *
- * Keeping every jwt.sign/verify in one place means the payload shape and
- * secret usage stay consistent (and testable).
+ * There are two kinds of PRINCIPAL, distinguished by `pt` (principal type):
+ *   'user'    an administrator signing in as themselves
+ *   'counter' a machine at a desk signing in as the counter itself
  */
 const ACCESS_TTL = process.env.JWT_EXPIRES_IN || '15m';
 const REFRESH_TTL = process.env.JWT_REFRESH_EXPIRES_IN || '30d';
@@ -16,10 +17,10 @@ const REFRESH_TTL = process.env.JWT_REFRESH_EXPIRES_IN || '30d';
 function signAccess(user) {
   return jwt.sign(
     {
+      pt: 'user',
       id: user._id,
       role: user.role,
       organization: user.organization,
-      branch: user.branch,
       tv: user.tokenVersion,
     },
     process.env.JWT_SECRET,
@@ -29,14 +30,39 @@ function signAccess(user) {
 
 function signRefresh(user) {
   return jwt.sign(
-    { id: user._id, tv: user.tokenVersion, typ: 'refresh' },
+    { pt: 'user', id: user._id, tv: user.tokenVersion, typ: 'refresh' },
     process.env.JWT_SECRET,
     { expiresIn: REFRESH_TTL }
   );
 }
 
-// Short-lived token baked into a branch's rotating QR code. Validating it
-// on join proves the QR was scanned while fresh (anti screenshot-reuse).
+// A counter signs in as itself — the token carries where it physically is.
+function signCounterAccess(counter) {
+  return jwt.sign(
+    {
+      pt: 'counter',
+      id: counter._id,
+      role: 'Counter',
+      organization: counter.organization,
+      branch: counter.branch,
+      room: counter.room,
+      tv: counter.tokenVersion,
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: ACCESS_TTL }
+  );
+}
+
+function signCounterRefresh(counter) {
+  return jwt.sign(
+    { pt: 'counter', id: counter._id, tv: counter.tokenVersion, typ: 'refresh' },
+    process.env.JWT_SECRET,
+    { expiresIn: REFRESH_TTL }
+  );
+}
+
+// Short-lived token baked into a room's rotating QR. Validating it on join
+// proves the code was scanned while fresh (anti screenshot-reuse).
 function signQrToken(branchId, orgId, ttlSeconds) {
   return jwt.sign(
     { branch: branchId.toString(), org: orgId.toString(), typ: 'qr' },
@@ -59,4 +85,12 @@ function verify(token) {
   return jwt.verify(token, process.env.JWT_SECRET);
 }
 
-module.exports = { signAccess, signRefresh, signQrToken, signSession, verify };
+module.exports = {
+  signAccess,
+  signRefresh,
+  signCounterAccess,
+  signCounterRefresh,
+  signQrToken,
+  signSession,
+  verify,
+};

@@ -40,4 +40,22 @@ function buildCounterCode({ orgName, branchName, room, existingCodes = [] }) {
   return `${prefix}-${Date.now().toString().slice(-4)}`;
 }
 
-module.exports = { initials, roomCode, buildCounterCode };
+/**
+ * Login credentials for a counter. The email is derived from its code so it's
+ * predictable and easy to type at the desk; the password is random and shown
+ * to the admin exactly once, so only a hash is ever stored.
+ */
+const { randomInt } = require('crypto');
+
+function counterEmail(code, orgSlug) {
+  return `${String(code).toLowerCase()}@${orgSlug || 'org'}.queueos.app`;
+}
+
+// Readable but random — easy to dictate to the team, hard to guess.
+function generatePassword() {
+  const words = ['desk', 'queue', 'front', 'token', 'serve', 'line', 'call', 'room'];
+  const w = words[randomInt(0, words.length)];
+  return `${w}-${randomInt(1000, 9999)}-${randomInt(1000, 9999)}`;
+}
+
+module.exports = { initials, roomCode, buildCounterCode, counterEmail, generatePassword };

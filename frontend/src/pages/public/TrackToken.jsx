@@ -172,7 +172,7 @@ export default function TrackToken() {
 
       <p className="text-center text-xs text-ink-400 mt-5 flex items-center justify-center gap-1.5">
         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse-soft" />
-        Live — updates automatically
+        Live
       </p>
     </Shell>
   );

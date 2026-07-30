@@ -3,25 +3,22 @@ import { NavLink, Outlet, useNavigate, useLocation, useParams, Link } from 'reac
 import api from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import { useBranchStore } from '../store/branchStore';
-import { roleInfo } from '../lib/roles';
 import { Icon, NAV_ICON } from '../components/icons';
 import Toaster from '../components/Toaster';
 
 /**
- * The console shell. Navigation is deliberately two-level, mirroring how the
- * business actually works:
+ * The admin console shell. Navigation mirrors how the business is organized:
  *
  *   ORGANIZATION  →  Branches (create locations, then step into one)
- *   BRANCH        →  Departments · Rooms · Staff · Analytics · Displays & QR
+ *   BRANCH        →  Departments · Rooms & Counters · Analytics · Displays & QR
  *
- * Everything operational belongs to a specific branch, so the branch-scoped
- * section only appears once you're inside one.
+ * Counters get their own dedicated screen instead of this shell — see
+ * pages/counter/CounterConsole.jsx.
  */
 const BRANCH_NAV = [
   ['', 'Overview'],
   ['departments', 'Departments'],
   ['rooms', 'Rooms & Counters'],
-  ['staff', 'Staff'],
   ['analytics', 'Analytics'],
   ['displays', 'Displays & QR'],
 ];
@@ -33,8 +30,6 @@ export default function DashboardLayout() {
   const location = useLocation();
   const { branchId } = useParams();
   const [mobileOpen, setMobileOpen] = useState(false);
-
-  const isAdmin = user?.role === 'Admin';
 
   useEffect(() => {
     api.get('/branches').then(({ data }) => setBranches(data.branches)).catch(() => {});
@@ -70,20 +65,16 @@ export default function DashboardLayout() {
       </div>
 
       <nav className="flex-1 p-3 overflow-y-auto">
-        {/* Organization level */}
         <p className="px-3 pb-1.5 text-[11px] font-semibold text-ink-400 uppercase tracking-wider">Organization</p>
         <div className="space-y-0.5">
-          {isAdmin && (
-            <NavLink to="/branches" end className={linkCls}>
-              <Icon.building /> Branches
-            </NavLink>
-          )}
-          <NavLink to="/call" className={linkCls}>
-            <Icon.call /> Call next
+          <NavLink to="/branches" end className={linkCls}>
+            <Icon.building /> Branches
+          </NavLink>
+          <NavLink to="/administrators" className={linkCls}>
+            <Icon.users /> Administrators
           </NavLink>
         </div>
 
-        {/* Branch level — only once you're inside a branch */}
         {branch && (
           <>
             <div className="px-3 pt-5 pb-1.5">
@@ -101,11 +92,9 @@ export default function DashboardLayout() {
                 );
               })}
             </div>
-            {isAdmin && (
-              <Link to="/branches" className="flex items-center gap-2 px-3 py-2 mt-2 text-xs text-ink-400 hover:text-ink-600">
-                ← All branches
-              </Link>
-            )}
+            <Link to="/branches" className="flex items-center gap-2 px-3 py-2 mt-2 text-xs text-ink-400 hover:text-ink-600">
+              ← All branches
+            </Link>
           </>
         )}
       </nav>
@@ -113,7 +102,7 @@ export default function DashboardLayout() {
       <div className="p-3 border-t border-ink-100">
         <div className="px-2 mb-2">
           <p className="text-sm font-medium text-ink-900 truncate">{user?.name}</p>
-          <p className="text-xs text-ink-400" title={roleInfo(user?.role).can}>{roleInfo(user?.role).label}</p>
+          <p className="text-xs text-ink-400">Administrator</p>
         </div>
         <button onClick={handleLogout} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-ink-600 hover:bg-ink-50 transition">
           <Icon.logout /> Log out

@@ -26,7 +26,7 @@ router.get('/branch/:branchId', async (req, res) => {
 
   // Attach each room's counters so the UI can render the full picture in one go.
   const counters = await Counter.find(scoped(req, { branch: req.params.branchId }))
-    .populate('assignedStaff', 'name email')
+    .select('-password')
     .populate('departments', 'name');
 
   const byRoom = counters.reduce((acc, c) => {
@@ -40,17 +40,22 @@ router.get('/branch/:branchId', async (req, res) => {
   });
 });
 
+/**
+ * Create a room. Departments are OPTIONAL here — you can lay out the physical
+ * spaces first and decide what each one handles afterwards.
+ */
 router.post('/', authorize('Admin'), async (req, res) => {
   const { branch, name, code, departments = [] } = req.body;
   if (!(await ownsBranch(req, branch))) {
     return res.status(404).json({ message: 'Branch not found' });
   }
-  // Every listed department must belong to this branch.
-  const valid = await Department.countDocuments({
-    _id: { $in: departments }, branch, organization: req.orgId, isActive: true,
-  });
-  if (valid !== departments.length) {
-    return res.status(400).json({ message: 'One or more departments do not belong to this branch' });
+  if (departments.length) {
+    const valid = await Department.countDocuments({
+      _id: { $in: departments }, branch, organization: req.orgId, isActive: true,
+    });
+    if (valid !== departments.length) {
+      return res.status(400).json({ message: 'One or more departments do not belong to this branch' });
+    }
   }
 
   const room = await Room.create({ organization: req.orgId, branch, name, code, departments });
@@ -69,6 +74,19 @@ router.patch('/:id', authorize('Admin'), async (req, res) => {
       return res.status(400).json({ message: 'One or more departments do not belong to this branch' });
     }
     room.departments = req.body.departments;
+
+    // Drop any department a counter here was handling that the room no longer
+    // does, so a counter can never point at a queue outside its own room.
+    const kept = new Set(req.body.departments.map(String));
+    const counters = await Counter.find({ room: room._id, departments: { $ne: [] } });
+    await Promise.all(
+      counters.map((c) => {
+        const pruned = (c.departments || []).filter((d) => kept.has(String(d)));
+        if (pruned.length === c.departments.length) return null;
+        c.departments = pruned;
+        return c.save();
+      }).filter(Boolean)
+    );
   }
   if (req.body.name !== undefined) room.name = req.body.name;
   if (req.body.code !== undefined) room.code = req.body.code;

@@ -6,8 +6,9 @@ import { toast } from '../store/toastStore';
 import Toaster from '../components/Toaster';
 
 /**
- * Sign-in for administrators and counter staff. Customers never sign in —
- * they join a queue by scanning a QR code.
+ * One sign-in for two kinds of account: an administrator, or a counter signing
+ * in as itself (the machine at a desk, using the credentials the admin created
+ * with it). Customers never sign in — they scan a QR code.
  */
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -22,7 +23,8 @@ export default function Login() {
     try {
       const { data } = await api.post('/auth/login', { email, password });
       login(data);
-      navigate('/');
+      // A counter goes to its workstation; an admin to the console.
+      navigate(data.principal === 'counter' ? '/counter' : '/branches');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Login failed');
     } finally {

@@ -1,11 +1,16 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
+const Counter = require('../models/Counter');
 const Organization = require('../models/Organization');
 const { authenticate } = require('../middleware/auth');
-const { signAccess, signRefresh, verify } = require('../services/tokenService');
+const {
+  signAccess, signRefresh, signCounterAccess, signCounterRefresh, verify,
+} = require('../services/tokenService');
 const { applyTemplate } = require('../services/templateService');
 const { terminologyFor } = require('../config/terminology');
+
+const router = express.Router();
 
 // The org fields the frontend needs (name, industry, vocabulary, brand).
 function publicOrg(org) {
@@ -20,14 +25,8 @@ function publicOrg(org) {
   };
 }
 
-const router = express.Router();
-
 function slugify(name) {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40);
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
 }
 
 async function uniqueSlug(base) {
@@ -42,10 +41,9 @@ async function uniqueSlug(base) {
 }
 
 /**
- * Self-serve organization signup. Creates the Organization, its first Admin
- * (the owner), and optionally seeds an industry template (branch + services
- * + counters) so the org is usable in one step. This is what makes "sign up
- * and start managing queues in minutes" real.
+ * Self-serve organization signup. Creates the Organization, its first Admin,
+ * and seeds an industry template (branch + departments + rooms + counters) so
+ * the org is usable in one step.
  */
 router.post(
   '/register-org',
@@ -72,20 +70,14 @@ router.post(
         name: orgName,
         slug,
         industry: industry || 'other',
-        terminology: terminologyFor(industry), // speak the industry's language
+        terminology: terminologyFor(industry),
       });
 
       const admin = await User.create({
-        organization: org._id,
-        name,
-        email,
-        password,
-        phone,
-        role: 'Admin',
+        organization: org._id, name, email, password, phone, role: 'Admin',
       });
 
-      // Seed a ready-to-use branch + departments + rooms + counters.
-      await applyTemplate(org._id, industry, orgName);
+      await applyTemplate(org._id, industry, orgName, slug);
 
       return res.status(201).json({
         organization: publicOrg(org),
@@ -94,12 +86,11 @@ router.post(
         refreshToken: signRefresh(admin),
       });
     } catch (err) {
-      // Roll back the half-created org so a retry (e.g. after a duplicate
-      // email) starts clean.
       if (org) {
         await Promise.all([
           Organization.deleteOne({ _id: org._id }),
           User.deleteMany({ organization: org._id }),
+          Counter.deleteMany({ organization: org._id }),
         ]).catch(() => {});
       }
       if (err.code === 11000) {
@@ -110,6 +101,10 @@ router.post(
   }
 );
 
+/**
+ * One sign-in form for two kinds of account: an administrator, or a counter
+ * signing in as itself. We try admins first, then counters.
+ */
 router.post(
   '/login',
   [body('email').isEmail(), body('password').notEmpty()],
@@ -118,26 +113,46 @@ router.post(
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const { email, password } = req.body;
-    // Email is unique per org; a staff member logs in with just their email
-    // because the org is resolved from the matched account.
+
+    // --- Administrator ---
     const user = await User.findOne({ email, isActive: true });
-    if (!user) return res.status(401).json({ message: 'Invalid credentials' });
+    if (user && (await user.comparePassword(password))) {
+      const org = user.organization ? await Organization.findById(user.organization) : null;
+      return res.json({
+        principal: 'user',
+        user: user.toSafeObject(),
+        organization: publicOrg(org),
+        accessToken: signAccess(user),
+        refreshToken: signRefresh(user),
+      });
+    }
 
-    const match = await user.comparePassword(password);
-    if (!match) return res.status(401).json({ message: 'Invalid credentials' });
+    // --- Counter (the machine at a desk) ---
+    const counter = await Counter.findOne({ email, isActive: true }).populate('room', 'name code');
+    if (counter && (await counter.comparePassword(password))) {
+      const org = await Organization.findById(counter.organization);
+      return res.json({
+        principal: 'counter',
+        counter: {
+          _id: counter._id,
+          name: counter.name,
+          code: counter.code,
+          email: counter.email,
+          status: counter.status,
+          branch: counter.branch,
+          room: counter.room,
+        },
+        organization: publicOrg(org),
+        accessToken: signCounterAccess(counter),
+        refreshToken: signCounterRefresh(counter),
+      });
+    }
 
-    const org = user.organization ? await Organization.findById(user.organization) : null;
-    res.json({
-      user: user.toSafeObject(),
-      organization: publicOrg(org),
-      accessToken: signAccess(user),
-      refreshToken: signRefresh(user),
-    });
+    return res.status(401).json({ message: 'Invalid credentials' });
   }
 );
 
-// Exchange a valid refresh token for a fresh access token. tokenVersion is
-// re-checked so a revoked session can't be refreshed.
+// Exchange a valid refresh token for a fresh access token (either principal).
 router.post('/refresh', async (req, res) => {
   const { refreshToken } = req.body;
   if (!refreshToken) return res.status(400).json({ message: 'refreshToken required' });
@@ -145,25 +160,38 @@ router.post('/refresh', async (req, res) => {
     const decoded = verify(refreshToken);
     if (decoded.typ !== 'refresh') throw new Error('wrong token type');
 
+    if (decoded.pt === 'counter') {
+      const counter = await Counter.findById(decoded.id);
+      if (!counter || !counter.isActive || counter.tokenVersion !== decoded.tv) {
+        return res.status(401).json({ message: 'Session expired, please sign in again' });
+      }
+      return res.json({
+        accessToken: signCounterAccess(counter),
+        refreshToken: signCounterRefresh(counter),
+      });
+    }
+
     const user = await User.findById(decoded.id).select('-password');
     if (!user || !user.isActive || user.tokenVersion !== decoded.tv) {
       return res.status(401).json({ message: 'Session expired, please log in again' });
     }
-    res.json({ accessToken: signAccess(user), refreshToken: signRefresh(user) });
+    return res.json({ accessToken: signAccess(user), refreshToken: signRefresh(user) });
   } catch {
     return res.status(401).json({ message: 'Invalid refresh token' });
   }
 });
 
-// Revoke all of this user's tokens (logout everywhere) by bumping the version.
-router.post('/logout-all', authenticate, async (req, res) => {
-  await User.findByIdAndUpdate(req.user._id, { $inc: { tokenVersion: 1 } });
-  res.json({ message: 'All sessions revoked' });
-});
-
+// Who am I? Works for both principal types.
 router.get('/me', authenticate, async (req, res) => {
-  const org = req.user.organization ? await Organization.findById(req.user.organization) : null;
-  res.json({ user: req.user, organization: publicOrg(org) });
+  const org = req.orgId ? await Organization.findById(req.orgId) : null;
+  if (req.counter) {
+    return res.json({
+      principal: 'counter',
+      counter: req.counter,
+      organization: publicOrg(org),
+    });
+  }
+  return res.json({ principal: 'user', user: req.user, organization: publicOrg(org) });
 });
 
 module.exports = router;
