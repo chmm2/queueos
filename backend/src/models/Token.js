@@ -36,9 +36,28 @@ const tokenSchema = new mongoose.Schema(
     sessionId: { type: String, default: null, index: true },
 
     source: { type: String, enum: SOURCES, default: 'walk-in' },
+
+    // --- Priority pass ---
+    // A counter can push someone forward, but must record why — the reason,
+    // who granted it and when are kept for accountability.
     isPriority: { type: Boolean, default: false },
+    priorityReason: { type: String, trim: true, default: null },
+    priorityGrantedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Counter', default: null },
+    priorityGrantedAt: { type: Date, default: null },
 
     status: { type: String, enum: STATUSES, default: 'waiting' },
+
+    /**
+     * Sort position within the queue. Normally equal to issuedAt (plain FIFO),
+     * but it can be moved so a token lands at a specific place in line —
+     * that's how the no-show penalty pushes someone back without rewriting
+     * everyone else's record.
+     */
+    orderKey: { type: Date, default: Date.now, index: true },
+
+    // How many times this token has been called and not shown up. Resets never
+    // — a token is a single day's visit, so the count is naturally per-day.
+    noShowCount: { type: Number, default: 0 },
 
     // Timestamps for each stage transition — these double as the feature set
     // for ETA prediction (actual wait/service durations) and for analytics.
@@ -73,9 +92,9 @@ const tokenSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Primary ordering index: priority first, then FIFO by issue time.
-tokenSchema.index({ organization: 1, branch: 1, status: 1, isPriority: -1, issuedAt: 1 });
-tokenSchema.index({ department: 1, status: 1, isPriority: -1, issuedAt: 1 });
+// Primary ordering index: priority first, then by queue position.
+tokenSchema.index({ organization: 1, branch: 1, status: 1, isPriority: -1, orderKey: 1 });
+tokenSchema.index({ department: 1, status: 1, isPriority: -1, orderKey: 1 });
 
 module.exports = mongoose.model('Token', tokenSchema);
 module.exports.STATUSES = STATUSES;

@@ -78,7 +78,7 @@ async function recalcDepartmentEtas(branchId, departmentId) {
   const avgServiceSeconds = department.avgServiceTimeSeconds || 300;
 
   const waiting = await Token.find({ branch: branchId, department: departmentId, status: 'waiting' })
-    .sort({ isPriority: -1, issuedAt: 1 });
+    .sort({ isPriority: -1, orderKey: 1 });
 
   await Promise.all(
     waiting.map(async (token, index) => {

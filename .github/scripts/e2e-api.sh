@@ -162,7 +162,79 @@ OUT=$(curl -fsS -X POST "$API/tokens/call-next" "${CAUTH[@]}" \
 echo "   $OPEN_CODE calling with only another room's token queued -> $OUT (expect None)"
 test "$OUT" = "None"
 
-say "12. Rooms accept no departments at creation, and stay editable"
+say "12. NO-SHOW PENALTY: each miss drops them further, then out"
+# Serve tokens until our target is the one at the counter, completing anyone
+# called before them so the queue drains predictably.
+serve_until() {
+  local target="$1" out id
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    out=$(curl -fsS -X POST "$API/tokens/call-next" "${CAUTH[@]}" -H 'Content-Type: application/json' -d '{}')
+    id=$(echo "$out" | "$PY" -c "import sys,json;t=json.load(sys.stdin).get('token');print(t['_id'] if t else '')")
+    [ -z "$id" ] && return 1
+    [ "$id" = "$target" ] && return 0
+    curl -fsS -X PATCH "$API/tokens/$id/complete" "${CAUTH[@]}" \
+      -H 'Content-Type: application/json' -d '{}' > /dev/null
+  done
+  return 1
+}
+
+# Queue enough people that there are real places to lose. These go in as
+# walk-ins issued at the desk, which is both realistic and avoids the tight
+# rate limit that (deliberately) guards the public join endpoint.
+for i in 1 2 3 4 5 6 7 8; do
+  curl -fsS -X POST "$API/tokens" "${CAUTH[@]}" -H 'Content-Type: application/json' \
+    -d "{\"departmentId\":\"$DEPT\",\"customerName\":\"Queue $i\"}" > /dev/null
+done
+
+NS=$(curl -fsS -X POST "$API/tokens/call-next" "${CAUTH[@]}" -H 'Content-Type: application/json' -d '{}')
+NS_ID=$(echo "$NS" | json "['token']['_id']")
+NS_NUM=$(echo "$NS" | json "['token']['tokenNumber']")
+
+R1=$(curl -fsS -X PATCH "$API/tokens/$NS_ID/no-show" "${CAUTH[@]}" -H 'Content-Type: application/json' -d '{}')
+echo "   $NS_NUM 1st no-show -> $(echo "$R1" | json "['outcome']") at position $(echo "$R1" | json "['position']") (expect 2)"
+test "$(echo "$R1" | json "['position']")" = "2"
+
+serve_until "$NS_ID"
+R2=$(curl -fsS -X PATCH "$API/tokens/$NS_ID/no-show" "${CAUTH[@]}" -H 'Content-Type: application/json' -d '{}')
+echo "   $NS_NUM 2nd no-show -> position $(echo "$R2" | json "['position']") (expect 4)"
+test "$(echo "$R2" | json "['position']")" = "4"
+
+serve_until "$NS_ID"
+R3=$(curl -fsS -X PATCH "$API/tokens/$NS_ID/no-show" "${CAUTH[@]}" -H 'Content-Type: application/json' -d '{}')
+echo "   $NS_NUM 3rd no-show -> $(echo "$R3" | json "['outcome']") — the token is spent"
+test "$(echo "$R3" | json "['outcome']")" = "removed"
+STILL=$(curl -fsS "$API/tokens/branch/$BRANCH" "${CAUTH[@]}" | "$PY" -c "
+import sys,json
+print(sum(1 for t in json.load(sys.stdin)['tokens'] if t['_id']=='$NS_ID'))")
+echo "   and it is no longer in the active queue: $STILL (expect 0)"
+test "$STILL" = "0"
+
+
+say "13. PRIORITY PASS requires a reason"
+PT=$(curl -fsS "$API/tokens/branch/$BRANCH" "${CAUTH[@]}" | "$PY" -c "
+import sys,json
+ts=[t for t in json.load(sys.stdin)['tokens'] if t['status']=='waiting' and not t['isPriority']]
+print(ts[0]['_id'])")
+CODE=$(curl -s -o /dev/null -w '%{http_code}' -X PATCH "$API/tokens/$PT/priority"   "${CAUTH[@]}" -H 'Content-Type: application/json' -d '{}')
+echo "   priority with no reason -> HTTP $CODE (expect 400)"
+test "$CODE" = "400"
+CODE=$(curl -s -o /dev/null -w '%{http_code}' -X PATCH "$API/tokens/$PT/priority"   "${CAUTH[@]}" -H 'Content-Type: application/json' -d '{"reason":"x"}')
+echo "   priority with a too-short reason -> HTTP $CODE (expect 400)"
+test "$CODE" = "400"
+
+GRANTED=$(curl -fsS -X PATCH "$API/tokens/$PT/priority" "${CAUTH[@]}"   -H 'Content-Type: application/json' -d '{"reason":"Elderly customer, unable to stand"}')
+echo "   with a reason -> $(echo "$GRANTED" | json "['token']['isPriority']") | stored: $(echo "$GRANTED" | json "['token']['priorityReason']")"
+test "$(echo "$GRANTED" | json "['token']['isPriority']")" = "True"
+
+# And they now sort to the front of that queue.
+FIRST=$(curl -fsS "$API/tokens/branch/$BRANCH" "${CAUTH[@]}" | "$PY" -c "
+import sys,json
+ts=[t for t in json.load(sys.stdin)['tokens'] if t['status']=='waiting']
+print(ts[0]['_id'])")
+echo "   priority token is now first in line: $([ "$FIRST" = "$PT" ] && echo yes || echo no)"
+test "$FIRST" = "$PT"
+
+say "14. Rooms accept no departments at creation, and stay editable"
 NEW_ROOM=$(curl -fsS -X POST "$API/rooms" "${AUTH[@]}" -H 'Content-Type: application/json' \
   -d "{\"branch\":\"$BRANCH\",\"name\":\"CI Flex Room\",\"code\":\"FLEX\"}" | json "['room']['_id']")
 echo "   created a room with no departments"
@@ -171,7 +243,7 @@ UPDATED=$(curl -fsS -X PATCH "$API/rooms/$NEW_ROOM" "${AUTH[@]}" -H 'Content-Typ
 echo "   then clubbed $UPDATED departments into it (expect 2)"
 test "$UPDATED" = "2"
 
-say "13. Departments can be copied to a new branch"
+say "15. Departments can be copied to a new branch"
 NEW_BRANCH=$(curl -fsS -X POST "$API/branches" "${AUTH[@]}" -H 'Content-Type: application/json' \
   -d '{"name":"CI Second Site","timezone":"UTC"}' | json "['branch']['_id']")
 COPIED=$(curl -fsS -X POST "$API/departments/copy" "${AUTH[@]}" -H 'Content-Type: application/json' \
@@ -182,7 +254,7 @@ echo "   copied $COPIED department(s); re-running copied $AGAIN (expect 0)"
 test "$COPIED" -gt 0
 test "$AGAIN" = "0"
 
-say "14. TENANT ISOLATION: a second org cannot see the first org's data"
+say "16. TENANT ISOLATION: a second org cannot see the first org's data"
 RIVAL="rival-$(date +%s)-$RANDOM@ci-test.com"
 OTHER=$(curl -fsS -X POST "$API/auth/register-org" -H 'Content-Type: application/json' \
   -d "{\"orgName\":\"CI Rival Bank\",\"industry\":\"bank\",\"name\":\"Rival Admin\",\"email\":\"$RIVAL\",\"password\":\"password123\"}" \
@@ -196,7 +268,7 @@ CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/departments" \
 echo "   cross-tenant department create -> HTTP $CODE (expect 404)"
 test "$CODE" = "404"
 
-say "15. The ETA model reports its self-learning state"
+say "17. The ETA model reports its self-learning state"
 curl -fsS "$API/analytics/model" "${AUTH[@]}" | json "['status']"
 
 printf '\n\033[32mAll end-to-end checks passed.\033[0m\n'

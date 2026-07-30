@@ -6,6 +6,7 @@ import { useAuthStore } from '../../store/authStore';
 import { toast } from '../../store/toastStore';
 import { useTerms } from '../../lib/terms';
 import Toaster from '../../components/Toaster';
+import PriorityDialog from '../../components/PriorityDialog';
 import { Badge, STATUS_TONE } from '../../components/ui';
 import { Icon } from '../../components/icons';
 
@@ -24,6 +25,7 @@ export default function CounterConsole() {
   const [tokens, setTokens] = useState([]);
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(new Date());
+  const [priorityFor, setPriorityFor] = useState(null); // token awaiting a reason
 
   const branchId = counter?.branch;
 
@@ -81,7 +83,7 @@ export default function CounterConsole() {
     }
   }
 
-  const LABELS = { hold: 'held', skip: 'marked no-show', complete: 'completed', recall: 'recalled' };
+  const LABELS = { hold: 'held', complete: 'completed', recall: 'recalled' };
   async function act(id, action, tokenNumber) {
     try {
       await api.patch(`/tokens/${id}/${action}`, {});
@@ -89,6 +91,32 @@ export default function CounterConsole() {
       refresh();
     } catch (e) {
       toast.error(e.response?.data?.message || 'Action failed.');
+    }
+  }
+
+  /**
+   * No-show: they go back in line further down, or out entirely once they've
+   * used up their chances. The response tells us which happened.
+   */
+  async function markNoShow(id) {
+    try {
+      const { data } = await api.patch(`/tokens/${id}/no-show`, {});
+      if (data.outcome === 'removed') toast.error(data.message);
+      else toast.info(data.message);
+      refresh();
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Could not record the no-show.');
+    }
+  }
+
+  async function grantPriority(reason) {
+    try {
+      const { data } = await api.patch(`/tokens/${priorityFor._id}/priority`, { reason });
+      toast.success(data.message);
+      setPriorityFor(null);
+      refresh();
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Could not grant priority.');
     }
   }
 
@@ -166,10 +194,15 @@ export default function CounterConsole() {
                       {serving.department?.name}
                       {serving.customerName && ` · ${serving.customerName}`}
                     </p>
+                    {serving.noShowCount > 0 && (
+                      <p className="text-xs text-orange-700 mt-1">
+                        {serving.noShowCount} previous no-show{serving.noShowCount > 1 ? 's' : ''}
+                      </p>
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button onClick={() => act(serving._id, 'hold', serving.tokenNumber)} className="px-4 py-3 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-800 text-sm font-medium transition">Hold</button>
-                    <button onClick={() => act(serving._id, 'skip', serving.tokenNumber)} className="px-4 py-3 rounded-xl bg-orange-100 hover:bg-orange-200 text-orange-800 text-sm font-medium transition">No-show</button>
+                    <button onClick={() => markNoShow(serving._id)} className="px-4 py-3 rounded-xl bg-orange-100 hover:bg-orange-200 text-orange-800 text-sm font-medium transition">No-show</button>
                     <button onClick={() => act(serving._id, 'complete', serving.tokenNumber)} className="px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition">Complete</button>
                   </div>
                 </div>
@@ -202,23 +235,37 @@ export default function CounterConsole() {
           ) : (
             <div className="divide-y divide-ink-100">
               {relevant.map((x) => (
-                <div key={x._id} className="flex items-center justify-between px-6 py-3.5">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="font-semibold text-ink-900 tnum">{x.tokenNumber}</span>
-                    <span className="text-sm text-ink-400 truncate">{x.department?.name}</span>
-                    {x.isPriority && <Badge tone="danger">priority</Badge>}
-                    <Badge tone={STATUS_TONE[x.status]}>{x.status}</Badge>
+                <div key={x._id} className="px-6 py-3.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0 flex-wrap">
+                      <span className="font-semibold text-ink-900 tnum">{x.tokenNumber}</span>
+                      <span className="text-sm text-ink-400 truncate">{x.department?.name}</span>
+                      {x.isPriority && <Badge tone="danger">priority</Badge>}
+                      {x.noShowCount > 0 && (
+                        <Badge tone="orange">{x.noShowCount} no-show{x.noShowCount > 1 ? 's' : ''}</Badge>
+                      )}
+                      <Badge tone={STATUS_TONE[x.status]}>{x.status}</Badge>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="text-sm text-ink-400 tnum">
+                        {x.predictedEtaSeconds != null ? `~${Math.round(x.predictedEtaSeconds / 60)}m` : '—'}
+                      </span>
+                      {!x.isPriority && ['waiting', 'held'].includes(x.status) && (
+                        <button onClick={() => setPriorityFor(x)}
+                          className="text-sm font-medium text-ink-500 hover:text-brand-700" title="Grant a priority pass">
+                          Priority
+                        </button>
+                      )}
+                      {(x.status === 'held' || x.status === 'skipped') && (
+                        <button onClick={() => act(x._id, 'recall', x.tokenNumber)} className="text-sm font-medium text-brand-600 hover:text-brand-700">
+                          Recall
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4 shrink-0">
-                    <span className="text-sm text-ink-400 tnum">
-                      {x.predictedEtaSeconds != null ? `~${Math.round(x.predictedEtaSeconds / 60)}m` : '—'}
-                    </span>
-                    {(x.status === 'held' || x.status === 'skipped') && (
-                      <button onClick={() => act(x._id, 'recall', x.tokenNumber)} className="text-sm font-medium text-brand-600 hover:text-brand-700">
-                        Recall
-                      </button>
-                    )}
-                  </div>
+                  {x.isPriority && x.priorityReason && (
+                    <p className="text-xs text-ink-400 mt-1">Priority: {x.priorityReason}</p>
+                  )}
                 </div>
               ))}
             </div>
@@ -226,6 +273,13 @@ export default function CounterConsole() {
         </div>
       </main>
 
+      {priorityFor && (
+        <PriorityDialog
+          token={priorityFor}
+          onConfirm={grantPriority}
+          onCancel={() => setPriorityFor(null)}
+        />
+      )}
       <Toaster />
     </div>
   );

@@ -18,10 +18,12 @@ const AuditLog = require('../models/AuditLog');
  * "completed", for example.
  */
 const TRANSITIONS = {
-  waiting: ['serving', 'cancelled'],
-  serving: ['held', 'skipped', 'completed'],
-  held: ['serving', 'missed'],
-  skipped: ['serving', 'missed'],
+  waiting: ['serving', 'cancelled', 'missed'],
+  // A no-show sends them straight back to `waiting` (further down the line) or
+  // to `missed` once they've used up their chances — no manual recall needed.
+  serving: ['held', 'skipped', 'completed', 'waiting', 'missed'],
+  held: ['serving', 'waiting', 'missed'],
+  skipped: ['serving', 'waiting', 'missed'],
   completed: [],
   missed: [],
   cancelled: [],
@@ -76,6 +78,16 @@ async function transition(tokenId, toStatus, actorUserId = null, metadata = {}) 
     case 'skipped':
       token.recallCount += 1;
       token.recallDeadline = new Date(now.getTime() + recallWindow * 1000);
+      break;
+    case 'waiting':
+      // Back in line (e.g. after a no-show) — no longer at any counter.
+      token.counter = null;
+      token.calledAt = null;
+      token.startedAt = null;
+      token.recallDeadline = null;
+      break;
+    case 'missed':
+      token.recallDeadline = null;
       break;
     default:
       break;

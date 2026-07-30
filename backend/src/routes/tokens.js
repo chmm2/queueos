@@ -2,12 +2,14 @@ const express = require('express');
 const Token = require('../models/Token');
 const Counter = require('../models/Counter');
 const Department = require('../models/Department');
+const Organization = require('../models/Organization');
 const AuditLog = require('../models/AuditLog');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requireOrg, scoped, assertSameOrg } = require('../middleware/tenant');
 const stateMachine = require('../services/tokenStateMachine');
 const { recalcDepartmentEtas, recalibrateDepartmentAvg } = require('../services/etaService');
 const { issueToken, callNext } = require('../services/queueService');
+const { recordNoShow } = require('../services/noShowService');
 const { notify } = require('../services/notificationService');
 const { emitQueueUpdate } = require('../sockets');
 
@@ -25,7 +27,7 @@ router.get('/branch/:branchId', async (req, res) => {
   const tokens = await Token.find(filter)
     .populate('department', 'name tokenPrefix')
     .populate('counter', 'name code')
-    .sort({ isPriority: -1, issuedAt: 1 });
+    .sort({ isPriority: -1, orderKey: 1 });
   res.json({ tokens });
 });
 
@@ -98,7 +100,6 @@ async function doTransition(req, res, toStatus) {
 
 const lifecycle = [
   ['hold', 'held'],
-  ['skip', 'skipped'],
   ['recall', 'serving'],
 ];
 
@@ -125,15 +126,90 @@ router.patch('/:id/complete', authorize('Counter'), async (req, res) => {
   }
 });
 
-router.patch('/:id/miss', authorize('Counter'), async (req, res) => {
+/**
+ * The customer was called and didn't come.
+ *
+ * Instead of losing their place outright they go back in line further down —
+ * position 2 the first time, 4 the second — and after the third they're out
+ * and need a fresh token. No manual recall required.
+ */
+router.patch('/:id/no-show', authorize('Counter'), async (req, res, next) => {
   try {
     const token = await Token.findById(req.params.id);
     if (!assertSameOrg(req, res, token)) return;
-    notify({ ...token.toObject(), organization: req.orgId }, 'missed').catch(() => {});
-    const t = await doTransition(req, res, 'missed');
-    if (t) res.json({ token: t });
+    if (String(token.counter || '') !== String(req.counter._id)) {
+      return res.status(403).json({ message: 'That token is not being served at this counter' });
+    }
+    if (token.status !== 'serving') {
+      return res.status(409).json({ message: `Cannot mark a '${token.status}' token as a no-show` });
+    }
+
+    const organization = await Organization.findById(req.orgId).select('settings');
+    const result = await recordNoShow({ token, organization, actorId: req.counter._id });
+
+    if (result.outcome === 'removed') {
+      notify({ ...token.toObject(), organization: req.orgId }, 'missed').catch(() => {});
+    }
+
+    await recalcDepartmentEtas(token.branch, token.department);
+    emitQueueUpdate(token.branch, {
+      type: 'no-show', tokenId: token._id, department: token.department,
+    });
+
+    res.json({
+      token,
+      ...result,
+      message: result.outcome === 'removed'
+        ? `${token.tokenNumber} removed after ${result.noShowCount} no-shows — a new token is needed`
+        : `${token.tokenNumber} moved to position ${result.position} · ${result.remaining} chance(s) left`,
+    });
   } catch (err) {
-    res.status(err.statusCode || 500).json({ message: err.message });
+    next(err);
+  }
+});
+
+/**
+ * Grant a priority pass. A counter can move someone up the queue, but must
+ * record WHY — the reason, who granted it and when are all kept, so a courtesy
+ * can be explained later.
+ */
+router.patch('/:id/priority', authorize('Counter'), async (req, res, next) => {
+  try {
+    const reason = (req.body.reason || '').trim();
+    if (reason.length < 3) {
+      return res.status(400).json({ message: 'A reason is required to grant a priority pass' });
+    }
+
+    const token = await Token.findById(req.params.id);
+    if (!assertSameOrg(req, res, token)) return;
+    if (!['waiting', 'serving', 'held'].includes(token.status)) {
+      return res.status(409).json({ message: `Cannot prioritise a '${token.status}' token` });
+    }
+    if (token.isPriority) {
+      return res.status(409).json({ message: 'That token already has a priority pass' });
+    }
+
+    token.isPriority = true;
+    token.priorityReason = reason;
+    token.priorityGrantedBy = req.counter._id;
+    token.priorityGrantedAt = new Date();
+    await token.save();
+
+    await AuditLog.create({
+      organization: req.orgId,
+      token: token._id,
+      branch: token.branch,
+      actor: req.counter._id,
+      action: 'TOKEN_PRIORITY_GRANTED',
+      metadata: { reason, counter: req.counter.code || req.counter.name },
+    });
+
+    await recalcDepartmentEtas(token.branch, token.department);
+    emitQueueUpdate(token.branch, { type: 'priority', tokenId: token._id, department: token.department });
+
+    res.json({ token, message: `${token.tokenNumber} given a priority pass` });
+  } catch (err) {
+    next(err);
   }
 });
 

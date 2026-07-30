@@ -227,11 +227,17 @@ router.get('/token/:id', async (req, res, next) => {
 
     let position = 0;
     if (token.status === 'waiting') {
+      // Mirrors the { isPriority: -1, orderKey: 1 } sort the queue is read
+      // with, so a no-show penalty shows up as a real drop in position.
       position = await Token.countDocuments({
         branch: token.branch,
         department: token.department,
         status: 'waiting',
-        issuedAt: { $lt: token.issuedAt },
+        _id: { $ne: token._id },
+        $or: [
+          ...(token.isPriority ? [] : [{ isPriority: true }]),
+          { isPriority: token.isPriority, orderKey: { $lt: token.orderKey } },
+        ],
       });
       position += 1;
     }

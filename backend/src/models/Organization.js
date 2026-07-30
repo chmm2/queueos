@@ -28,6 +28,20 @@ const organizationSchema = new mongoose.Schema(
       requireGeofence: { type: Boolean, default: false },
       qrRotationSeconds: { type: Number, default: 45 },
       brandColor: { type: String, default: '#4B4DDB' },
+
+      /**
+       * What happens when someone is called and doesn't show up. Rather than
+       * losing their place outright, they're put back in line further down —
+       * one forgiving step, then a harsher one, then out.
+       *
+       * penaltyPositions[n] is where the n-th no-show lands them (1-based
+       * position in their own queue). Once noShowCount reaches maxNoShows the
+       * token is spent and they must take a new one.
+       */
+      noShow: {
+        penaltyPositions: { type: [Number], default: [2, 4] },
+        maxNoShows: { type: Number, default: 3 },
+      },
     },
 
     // What this organization calls the person in the queue (Patient / Guest /

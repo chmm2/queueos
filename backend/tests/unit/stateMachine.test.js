@@ -10,20 +10,25 @@ describe('token state machine — legality', () => {
     expect(canTransition('waiting', 'cancelled')).toBe(true);
     expect(canTransition('serving', 'completed')).toBe(true);
     expect(canTransition('serving', 'held')).toBe(true);
-    expect(canTransition('serving', 'skipped')).toBe(true);
     expect(canTransition('held', 'serving')).toBe(true);
     expect(canTransition('held', 'missed')).toBe(true);
-    expect(canTransition('skipped', 'serving')).toBe(true);
-    expect(canTransition('skipped', 'missed')).toBe(true);
+  });
+
+  test('a no-show can go back into the queue or out of it', () => {
+    // The penalty path: called, didn't show, back to waiting further down.
+    expect(canTransition('serving', 'waiting')).toBe(true);
+    // Or straight out once they've used up their chances.
+    expect(canTransition('serving', 'missed')).toBe(true);
+    expect(canTransition('waiting', 'missed')).toBe(true); // auto-miss sweeper
   });
 
   test('rejects illegal jumps', () => {
     expect(canTransition('waiting', 'completed')).toBe(false); // can't skip serving
-    expect(canTransition('waiting', 'missed')).toBe(false);
     expect(canTransition('serving', 'cancelled')).toBe(false);
     expect(canTransition('completed', 'serving')).toBe(false); // can't revive
     expect(canTransition('missed', 'serving')).toBe(false);
     expect(canTransition('cancelled', 'waiting')).toBe(false);
+    expect(canTransition('completed', 'waiting')).toBe(false);
   });
 
   test('terminal states have no outgoing transitions', () => {

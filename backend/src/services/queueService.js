@@ -139,7 +139,7 @@ async function callNext({ counter, actorId }) {
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     // eslint-disable-next-line no-await-in-loop
-    const candidate = await Token.findOne(baseFilter).sort({ isPriority: -1, issuedAt: 1 });
+    const candidate = await Token.findOne(baseFilter).sort({ isPriority: -1, orderKey: 1 });
     if (!candidate) return null; // queue empty
 
     const now = new Date();

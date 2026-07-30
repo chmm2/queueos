@@ -11,20 +11,10 @@ const AuditLog = require('../../src/models/AuditLog');
  * MongoDB by default; set TEST_MONGO_URI to point at a throwaway database
  * instead (useful in sandboxes that can't download the mongod binary).
  */
-let mongod;
-beforeAll(async () => {
-  let uri = process.env.TEST_MONGO_URI;
-  if (!uri) {
-    const { MongoMemoryServer } = require('mongodb-memory-server');
-    mongod = await MongoMemoryServer.create();
-    uri = mongod.getUri();
-  }
-  await mongoose.connect(uri);
-});
-afterAll(async () => {
-  await mongoose.disconnect();
-  if (mongod) await mongod.stop();
-});
+const { connect, disconnect } = require('../helpers/db');
+
+beforeAll(connect);
+afterAll(disconnect);
 afterEach(async () => {
   await Promise.all([Token.deleteMany({}), AuditLog.deleteMany({})]);
 });
