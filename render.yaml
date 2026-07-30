@@ -34,17 +34,18 @@ services:
         fromService:
           type: web
           name: queueos-ml
-          property: host             # backend prepends https:// automatically
+          property: host             # server-to-server call; Render's private network resolves this fine
+      # CLIENT_URL / PUBLIC_WEB_URL are used for CORS checks against the
+      # BROWSER's Origin header and for links inside emails/QR codes, so they
+      # must be the PUBLIC address, not Render's private "host" property
+      # (which only resolves between Render services, never from a browser).
+      # Render's free web services are always reachable at
+      # https://<service-name>.onrender.com — update this if you rename the
+      # service or attach a custom domain.
       - key: CLIENT_URL
-        fromService:
-          type: web
-          name: queueos-web
-          property: host
+        value: https://queueos-web.onrender.com
       - key: PUBLIC_WEB_URL
-        fromService:
-          type: web
-          name: queueos-web
-          property: host
+        value: https://queueos-web.onrender.com
 
   - type: web
     name: queueos-web
@@ -52,8 +53,8 @@ services:
     plan: free
     rootDir: frontend
     envVars:
-      - key: API_HOST                # entrypoint builds https://<host>/api + socket URL
-        fromService:
-          type: web
-          name: queueos-api
-          property: host
+      # Must be the PUBLIC hostname — this gets shipped to the browser as
+      # window.__CONFIG__ and fetched directly by the user's browser, which
+      # cannot resolve Render's private inter-service "host" value.
+      - key: API_HOST
+        value: queueos-api.onrender.com
