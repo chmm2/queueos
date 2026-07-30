@@ -1,21 +1,129 @@
 import { useEffect, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import api from '../../api/client';
 import { useParams } from 'react-router-dom';
-import { useAuthStore } from '../../store/authStore';
+import api from '../../api/client';
 import { toast } from '../../store/toastStore';
-import { PageHeader, Card, StatCard, SectionTitle, Badge, btn } from '../../components/ui';
+import {
+  PageHeader, Card, StatCard, SectionTitle, MicroLabel, btn,
+} from '../../components/ui';
 
 /**
- * Smart-ETA panel: shows the self-learning model's state. While "collecting",
- * a progress bar tracks real visits toward activation. Once "active", it shows
- * measured accuracy. The model trains only on this org's own real data.
+ * Analytics for a branch over the last 24 hours, plus the state of the
+ * self-learning ETA model.
+ */
+export default function Analytics() {
+  const { branchId } = useParams();
+  const [summary, setSummary] = useState(null);
+  const [hourly, setHourly] = useState([]);
+
+  useEffect(() => {
+    if (!branchId) return;
+    api.get(`/analytics/branch/${branchId}/summary`).then(({ data }) => setSummary(data)).catch(() => {});
+    api.get(`/analytics/branch/${branchId}/hourly`)
+      .then(({ data }) => setHourly(data.hourly))
+      .catch(() => {});
+  }, [branchId]);
+
+  const outcomes = summary
+    ? [
+        { name: 'Completed', value: summary.completedCount, tone: 'bg-success' },
+        { name: 'Missed', value: summary.missedCount, tone: 'bg-warning' },
+        { name: 'Cancelled', value: summary.cancelledCount, tone: 'bg-clay' },
+      ]
+    : [];
+  const outcomeTotal = Math.max(1, outcomes.reduce((s, o) => s + o.value, 0));
+  const peak = Math.max(1, ...hourly.map((h) => h.count));
+
+  return (
+    <div>
+      <PageHeader
+        eyebrow="Last 24 hours"
+        title="The day, measured."
+        description="Volume, wait times and outcomes for this branch."
+      />
+
+      <SmartEta />
+
+      <div className="grid gap-4 mb-8" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))' }}>
+        <StatCard label="Total issued" value={summary?.totalIssued ?? '—'} />
+        <StatCard label="Avg wait" value={summary ? `${Math.round(summary.avgWaitSeconds / 60)}m` : '—'} />
+        <StatCard label="Avg service" value={summary ? `${Math.round(summary.avgServiceSeconds / 60)}m` : '—'} />
+        <StatCard
+          label="No-show rate"
+          value={summary ? `${Math.round(summary.noShowRate * 100)}%` : '—'}
+          delta={summary && summary.noShowRate <= 0.05 ? 'healthy' : ''}
+          deltaTone="success"
+        />
+      </div>
+
+      <div className="grid gap-5" style={{ gridTemplateColumns: 'minmax(0,1.5fr) minmax(0,1fr)' }}>
+        <Card>
+          <SectionTitle>Tokens issued by hour</SectionTitle>
+          {hourly.length === 0 ? (
+            <p className="text-[14px] text-muted-2 py-16 text-center">No tokens issued yet today.</p>
+          ) : (
+            <>
+              <div className="flex items-end gap-2" style={{ height: 210 }}>
+                {hourly.map((h, i) => (
+                  <div key={h.hour} className="flex-1 flex flex-col justify-end h-full">
+                    <div
+                      className="w-full rounded-t-[5px] bg-espresso origin-bottom animate-grow"
+                      style={{ height: `${Math.max(4, (h.count / peak) * 100)}%`, animationDelay: `${i * 45}ms` }}
+                      title={`${h.count} at ${h.hour}:00`}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2 mt-3">
+                {hourly.map((h) => (
+                  <span key={h.hour} className="flex-1 text-center font-mono text-[10px] text-muted-3">
+                    {String(h.hour).padStart(2, '0')}
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
+        </Card>
+
+        <Card>
+          <SectionTitle>Outcomes</SectionTitle>
+          <div className="space-y-5">
+            {outcomes.map((o, i) => {
+              const pct = Math.round((o.value / outcomeTotal) * 100);
+              return (
+                <div key={o.name}>
+                  <div className="flex items-baseline justify-between mb-2">
+                    <span className="text-[14px] text-ink-2">{o.name}</span>
+                    <span className="font-mono text-[13px] text-muted">
+                      {o.value} <span className="text-muted-3">· {pct}%</span>
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-pill bg-espresso-tint overflow-hidden">
+                    <div
+                      className={`h-full rounded-pill ${o.tone} transition-all duration-700`}
+                      style={{ width: `${pct}%`, transitionDelay: `${i * 90}ms` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+            {outcomes.length === 0 && (
+              <p className="text-[14px] text-muted-2 py-8 text-center">Nothing completed yet.</p>
+            )}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Smart ETA banner — espresso card, paper text. While "learning" it shows how
+ * far the org is from having a model trained on its own real visits.
  */
 function SmartEta() {
-  const isAdmin = useAuthStore((s) => s.user?.role) === 'Admin';
   const [m, setM] = useState(null);
   const [busy, setBusy] = useState(false);
-  const MIN = 120; // must match ETA_MIN_SAMPLES on the ML service
+  const MIN = 120; // matches ETA_MIN_SAMPLES on the ML service
 
   const load = () => api.get('/analytics/model').then(({ data }) => setM(data)).catch(() => {});
   useEffect(() => { load(); }, []);
@@ -38,113 +146,45 @@ function SmartEta() {
   const pct = Math.min(100, Math.round((m.sampleCount / MIN) * 100));
 
   return (
-    <Card className="mb-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-[0.95rem] font-semibold text-ink-800">Smart ETA</h2>
-            <Badge tone={active ? 'success' : 'warning'}>{active ? 'Active' : 'Learning'}</Badge>
+    <div className="bg-espresso rounded-card p-7 mb-8 animate-rise">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h2 className="text-[19px] font-bold tracking-[-.02em] text-paper">Smart ETA</h2>
+            <span
+              className={`px-2.5 py-[3px] rounded-pill text-[11px] font-bold ${
+                active ? 'bg-success/25 text-[#9FD3B4]' : 'bg-board-amber/20 text-board-amber'
+              }`}
+            >
+              {active ? 'Active' : 'Learning'}
+            </span>
           </div>
-          <p className="text-sm text-ink-500 mt-1 max-w-lg">
+          <p className="text-[15px] text-paper/65 mt-2 max-w-xl leading-relaxed">
             {active
-              ? `Predictions are trained on your real visits — accurate within ~${Math.round((m.maeSeconds || 0) / 60)} min on ${Math.round((m.accuracy || 0) * 100)}% of visits.`
-              : 'Until the model has learned your real patterns accurately, wait times use a transparent estimate from your own service times.'}
+              ? `Predictions are trained on your real visits — accurate within about ${Math.round((m.maeSeconds || 0) / 60)} minutes on ${Math.round((m.accuracy || 0) * 100)}% of them.`
+              : 'Until the model has your real rhythm, wait times come from a transparent estimate built on your own service durations.'}
           </p>
         </div>
-        {isAdmin && (
-          <button onClick={trainNow} disabled={busy} className={btn.secondary}>
-            {busy ? 'Training…' : 'Train now'}
-          </button>
-        )}
+        <button
+          onClick={trainNow}
+          disabled={busy}
+          className="shrink-0 px-5 py-2.5 rounded-[11px] bg-paper hover:bg-surface text-espresso text-[14px] font-semibold transition-colors disabled:opacity-50"
+        >
+          {busy ? 'Training…' : 'Train now'}
+        </button>
       </div>
 
       {!active && (
-        <div className="mt-4">
-          <div className="flex justify-between text-xs text-ink-400 mb-1.5">
+        <div className="mt-6">
+          <div className="flex justify-between font-mono text-[11px] text-paper/45 mb-2">
             <span>{m.sampleCount} real visits collected</span>
             <span>activates at {MIN}</span>
           </div>
-          <div className="h-2 rounded-full bg-ink-100 overflow-hidden">
-            <div className="h-full bg-brand-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+          <div className="h-2 rounded-pill bg-paper/10 overflow-hidden">
+            <div className="h-full rounded-pill bg-board-amber transition-all duration-700" style={{ width: `${pct}%` }} />
           </div>
-          <p className="text-xs text-ink-400 mt-2">{m.reason}</p>
         </div>
       )}
-    </Card>
-  );
-}
-
-/**
- * Analytics for the selected branch (last 24h). Recharts renders hourly volume
- * and the outcome breakdown; stat tiles surface wait/service times and
- * no-show / abandonment rates.
- */
-export default function Analytics() {
-  const { branchId } = useParams();
-  const [summary, setSummary] = useState(null);
-  const [hourly, setHourly] = useState([]);
-
-  useEffect(() => {
-    if (!branchId) return;
-    api.get(`/analytics/branch/${branchId}/summary`).then(({ data }) => setSummary(data)).catch(() => {});
-    api.get(`/analytics/branch/${branchId}/hourly`).then(({ data }) =>
-      setHourly(data.hourly.map((h) => ({ hour: `${h.hour}:00`, tokens: h.count })))
-    ).catch(() => {});
-  }, [branchId]);
-
-  if (!branchId) return <p className="text-sm text-ink-400 max-w-4xl mx-auto">Select a branch from the top bar first.</p>;
-
-  const outcomes = summary
-    ? [
-        { name: 'Completed', value: summary.completedCount, color: '#059669' },
-        { name: 'Missed', value: summary.missedCount, color: '#dc2626' },
-        { name: 'Cancelled', value: summary.cancelledCount, color: '#9aa1b2' },
-      ]
-    : [];
-
-  const axis = { fontSize: 11, fill: '#9aa1b2' };
-
-  return (
-    <div className="max-w-4xl mx-auto animate-rise">
-      <PageHeader title="Analytics" description="Performance for the selected branch over the last 24 hours." />
-
-      <SmartEta />
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Total issued" value={summary?.totalIssued ?? '—'} />
-        <StatCard label="Avg wait" value={summary ? `${Math.round(summary.avgWaitSeconds / 60)}m` : '—'} accent />
-        <StatCard label="Avg service" value={summary ? `${Math.round(summary.avgServiceSeconds / 60)}m` : '—'} />
-        <StatCard label="No-show rate" value={summary ? `${Math.round(summary.noShowRate * 100)}%` : '—'} />
-      </div>
-
-      <div className="grid md:grid-cols-2 gap-4">
-        <Card>
-          <SectionTitle>Tokens issued by hour</SectionTitle>
-          <ResponsiveContainer width="100%" height={230}>
-            <BarChart data={hourly} margin={{ left: -18 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#eef0f5" vertical={false} />
-              <XAxis dataKey="hour" tick={axis} tickLine={false} axisLine={false} />
-              <YAxis tick={axis} tickLine={false} axisLine={false} allowDecimals={false} />
-              <Tooltip cursor={{ fill: '#f4f5f9' }} contentStyle={{ borderRadius: 12, border: '1px solid #e4e7ee', fontSize: 13 }} />
-              <Bar dataKey="tokens" fill="#4f52e0" radius={[5, 5, 0, 0]} maxBarSize={26} />
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-        <Card>
-          <SectionTitle>Outcomes</SectionTitle>
-          <ResponsiveContainer width="100%" height={230}>
-            <BarChart data={outcomes} margin={{ left: -18 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#eef0f5" vertical={false} />
-              <XAxis dataKey="name" tick={axis} tickLine={false} axisLine={false} />
-              <YAxis tick={axis} tickLine={false} axisLine={false} allowDecimals={false} />
-              <Tooltip cursor={{ fill: '#f4f5f9' }} contentStyle={{ borderRadius: 12, border: '1px solid #e4e7ee', fontSize: 13 }} />
-              <Bar dataKey="value" radius={[5, 5, 0, 0]} maxBarSize={48}>
-                {outcomes.map((o) => <Cell key={o.name} fill={o.color} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-      </div>
     </div>
   );
 }

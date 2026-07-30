@@ -1,99 +1,185 @@
 /**
- * Shared UI primitives — the design system for the console. Every page uses
- * these so headers, cards, stats, badges and empty states look identical
- * across the product.
+ * Shared UI primitives for the warm-paper system. Every console screen builds
+ * from these so spacing, radii, borders and motion stay consistent.
  */
 
-export function PageHeader({ title, description, actions }) {
+/** Clay mono label that sits above a page title. */
+export function Eyebrow({ children }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-3 mb-6">
-      <div>
-        <h1 className="text-[1.65rem] leading-tight font-semibold tracking-tight text-ink-900">{title}</h1>
-        {description && <p className="text-sm text-ink-500 mt-1">{description}</p>}
-      </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
-    </div>
+    <p className="font-mono text-[11px] tracking-[.2em] uppercase text-clay mb-2.5">{children}</p>
   );
 }
 
-export function Card({ children, className = '', pad = true }) {
+/** Small uppercase mono label used inside cards and stat tiles. */
+export function MicroLabel({ children, className = '' }) {
   return (
-    <div className={`bg-white rounded-2xl border border-ink-200/70 shadow-card ${pad ? 'p-6' : ''} ${className}`}>
+    <p className={`font-mono text-[10px] tracking-[.18em] uppercase text-muted-3 ${className}`}>
       {children}
+    </p>
+  );
+}
+
+export function PageHeader({ eyebrow, title, description, actions }) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-4 mb-8 animate-rise">
+      <div className="min-w-0">
+        {eyebrow && <Eyebrow>{eyebrow}</Eyebrow>}
+        <h1 className="text-[42px] leading-[1.05] font-bold tracking-[-.035em] text-ink">{title}</h1>
+        {description && <p className="text-[16px] text-muted mt-2.5 max-w-2xl">{description}</p>}
+      </div>
+      {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
     </div>
   );
 }
 
-export function SectionTitle({ children, right }) {
+/** `hover` lifts the card 3px — used for anything clickable. */
+export function Card({ children, className = '', pad = true, hover = false, as: Tag = 'div', ...rest }) {
   return (
-    <div className="flex items-center justify-between mb-4">
-      <h2 className="text-[0.95rem] font-semibold text-ink-800">{children}</h2>
+    <Tag
+      className={`bg-surface border border-line rounded-card shadow-rest transition-all duration-200 ${
+        hover ? 'hover:-translate-y-[3px] hover:shadow-lift' : ''
+      } ${pad ? 'p-6' : ''} ${className}`}
+      {...rest}
+    >
+      {children}
+    </Tag>
+  );
+}
+
+export function SectionTitle({ children, right, className = '' }) {
+  return (
+    <div className={`flex items-center justify-between gap-3 mb-5 ${className}`}>
+      <h2 className="text-[17px] font-bold tracking-[-.02em] text-ink">{children}</h2>
       {right}
     </div>
   );
 }
 
-export function StatCard({ label, value, sub, accent = false }) {
+/** KPI tile: big number, optional delta, mono caption. */
+export function StatCard({ label, value, delta, deltaTone = 'success', accent }) {
+  const tone =
+    deltaTone === 'clay' ? 'text-clay' : deltaTone === 'muted' ? 'text-muted-2' : 'text-success';
   return (
-    <div className="bg-white rounded-2xl border border-ink-200/70 shadow-card px-5 py-4">
-      <p className={`text-[1.7rem] leading-none font-semibold tnum ${accent ? 'text-brand-600' : 'text-ink-900'}`}>{value}</p>
-      <p className="text-xs font-medium text-ink-400 uppercase tracking-wider mt-2">{label}</p>
-      {sub && <p className="text-xs text-ink-500 mt-0.5">{sub}</p>}
-    </div>
+    <Card className="px-6 py-5">
+      <div className="flex items-baseline gap-2.5 flex-wrap">
+        <span
+          className={`text-[38px] leading-none font-bold tracking-[-.035em] tnum ${
+            accent === 'clay' ? 'text-clay' : 'text-ink'
+          }`}
+        >
+          {value}
+        </span>
+        {delta && <span className={`font-mono text-xs ${tone}`}>{delta}</span>}
+      </div>
+      <MicroLabel className="mt-3">{label}</MicroLabel>
+    </Card>
   );
 }
 
-const BADGE_TONES = {
-  neutral: 'bg-ink-100 text-ink-600',
-  brand: 'bg-brand-50 text-brand-700',
-  success: 'bg-emerald-50 text-emerald-700',
-  warning: 'bg-amber-50 text-amber-700',
-  danger: 'bg-red-50 text-red-600',
-  orange: 'bg-orange-50 text-orange-700',
+const TONES = {
+  neutral: 'bg-espresso-tint border-espresso-tint-border text-ink-2',
+  clay: 'bg-clay-tint border-clay-tint-border text-clay-ink',
+  success: 'bg-success-tint border-success-tint-border text-success',
+  warning: 'bg-warning-tint border-warning-tint-border text-warning-ink',
+  espresso: 'bg-espresso border-espresso text-paper',
 };
 
-export function Badge({ tone = 'neutral', children }) {
+export function Badge({ tone = 'neutral', children, className = '', dot = false }) {
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${BADGE_TONES[tone] || BADGE_TONES.neutral}`}>
+    <span
+      className={`inline-flex items-center gap-1.5 px-2.5 py-[3px] rounded-pill border text-[11px] font-semibold ${
+        TONES[tone] || TONES.neutral
+      } ${className}`}
+    >
+      {dot && <span className="w-1.5 h-1.5 rounded-full bg-current animate-blink" />}
       {children}
     </span>
   );
 }
 
-// Map token statuses to badge tones in one place.
+/** Token/queue status → badge tone. */
 export const STATUS_TONE = {
   waiting: 'neutral',
-  serving: 'brand',
+  serving: 'espresso',
   held: 'warning',
-  skipped: 'orange',
+  skipped: 'warning',
   completed: 'success',
-  missed: 'danger',
+  missed: 'clay',
   cancelled: 'neutral',
+  open: 'success',
+  paused: 'warning',
+  closed: 'neutral',
 };
 
-export function EmptyState({ title, hint, action }) {
+export function EmptyState({ title, hint, action, dashed = false }) {
   return (
-    <div className="text-center py-12 px-6">
-      <div className="mx-auto w-10 h-10 rounded-xl bg-ink-100 grid place-items-center mb-3">
-        <span className="text-ink-400 text-lg">·</span>
-      </div>
-      <p className="text-sm font-medium text-ink-700">{title}</p>
-      {hint && <p className="text-sm text-ink-400 mt-1 max-w-xs mx-auto">{hint}</p>}
-      {action && <div className="mt-4">{action}</div>}
+    <div
+      className={`text-center py-12 px-6 ${
+        dashed ? 'border border-dashed border-line-input rounded-tile' : ''
+      }`}
+    >
+      <p className="text-[15px] font-semibold text-ink-2">{title}</p>
+      {hint && <p className="text-sm text-muted-2 mt-1.5 max-w-sm mx-auto">{hint}</p>}
+      {action && <div className="mt-5">{action}</div>}
     </div>
   );
 }
 
 export const btn = {
   primary:
-    'inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition shadow-sm disabled:opacity-50 disabled:pointer-events-none',
+    'inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-[11px] bg-espresso hover:bg-espresso-hover text-paper text-[14px] font-semibold transition-colors duration-150 disabled:opacity-45 disabled:pointer-events-none',
   secondary:
-    'inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-ink-200 bg-white hover:bg-ink-50 text-ink-700 text-sm font-medium transition disabled:opacity-50',
+    'inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-[11px] border border-line-input bg-surface hover:border-line-strong text-muted hover:text-ink text-[14px] font-semibold transition-colors duration-150 disabled:opacity-45',
   ghost:
-    'inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg hover:bg-ink-100 text-ink-500 text-sm transition',
+    'inline-flex items-center gap-1.5 text-[14px] font-semibold text-muted hover:text-clay transition-colors',
   danger:
-    'inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 text-sm font-medium transition',
+    'inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-[11px] border border-clay-tint-border bg-clay-tint hover:bg-clay hover:text-paper text-clay-ink text-[14px] font-semibold transition-colors duration-150',
 };
 
 export const field =
-  'w-full px-3.5 py-2.5 rounded-xl border border-ink-200 bg-white text-sm text-ink-800 placeholder-ink-400 transition focus:border-brand-400';
+  'w-full px-4 py-3 rounded-[11px] border border-line-input bg-surface-sunken text-[15px] text-ink placeholder-muted-3 transition-colors';
+
+export const fieldMono = `${field} font-mono`;
+
+/** A row of bars used on branch cards and the login floater. */
+export function Sparkline({ values, height = 48, recent = 3 }) {
+  const max = Math.max(...values, 1);
+  return (
+    <div className="flex items-end gap-[3px]" style={{ height }} aria-hidden="true">
+      {values.map((v, i) => (
+        <div
+          key={i}
+          className={`flex-1 rounded-[2px] origin-bottom animate-grow ${
+            i >= values.length - recent ? 'bg-clay' : 'bg-spark'
+          }`}
+          style={{ height: `${Math.max(8, (v / max) * 100)}%`, animationDelay: `${i * 28}ms` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** Thin load/progress bar; turns clay once it passes `warnAt`. */
+export function LoadBar({ value, max = 100, warnAt = 0.7, height = 6, tone }) {
+  const pct = Math.min(100, (value / Math.max(max, 1)) * 100);
+  const over = value / Math.max(max, 1) > warnAt;
+  const color = tone || (over ? 'bg-clay' : 'bg-espresso');
+  return (
+    <div className="w-full rounded-pill bg-espresso-tint overflow-hidden" style={{ height }}>
+      <div
+        className={`h-full rounded-pill transition-all duration-500 ${color}`}
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  );
+}
+
+/** Success-tinted pill with a blinking dot — the "this is live" signal. */
+export function LivePill({ label = 'Live' }) {
+  return (
+    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-pill bg-success-tint border border-success-tint-border text-success text-[11px] font-bold tracking-[.12em] uppercase font-mono">
+      <span className="w-1.5 h-1.5 rounded-full bg-success animate-blink" />
+      {label}
+    </span>
+  );
+}

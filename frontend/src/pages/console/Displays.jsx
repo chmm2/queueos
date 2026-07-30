@@ -1,14 +1,15 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import api from '../../api/client';
-import { PageHeader, Card, EmptyState, btn } from '../../components/ui';
+import Logo from '../../components/Logo';
+import { PageHeader, Card, EmptyState, MicroLabel, btn } from '../../components/ui';
 
 /**
  * Displays & QR — one screen and one join code per ROOM.
  *
- * This is the whole point of modelling rooms: the Registration room's TV shows
- * only Registration, and the QR taped to its wall drops customers straight
- * into that queue. Nothing from Pharmacy leaks onto it.
+ * This is the point of modelling rooms: the Registration screen shows only
+ * Registration, and the QR on its wall drops customers straight into that
+ * queue. Nothing from Pharmacy leaks onto it.
  */
 export default function Displays() {
   const { branchId } = useParams();
@@ -16,6 +17,7 @@ export default function Displays() {
   const [rooms, setRooms] = useState([]);
   const [selected, setSelected] = useState(params.get('room') || '');
   const [qr, setQr] = useState(null);
+  const [preview, setPreview] = useState(null);
 
   useEffect(() => {
     api.get(`/rooms/branch/${branchId}`).then(({ data }) => {
@@ -24,12 +26,13 @@ export default function Displays() {
     });
   }, [branchId]);
 
+  const scope = selected ? `?room=${selected}` : '';
+
   const loadQr = useCallback(async () => {
     if (!branchId) return;
-    const q = selected ? `?room=${selected}` : '';
-    const { data } = await api.get(`/branches/${branchId}/qr${q}`);
+    const { data } = await api.get(`/branches/${branchId}/qr${scope}`);
     setQr(data);
-  }, [branchId, selected]);
+  }, [branchId, scope]);
 
   useEffect(() => {
     loadQr();
@@ -37,14 +40,29 @@ export default function Displays() {
     return () => clearInterval(id);
   }, [loadQr]);
 
+  // A small live read so the preview shows something real.
+  useEffect(() => {
+    if (!branchId) return;
+    const load = () =>
+      api.get(`/public/board/${branchId}${scope}`)
+        .then(({ data }) => setPreview(data))
+        .catch(() => setPreview(null));
+    load();
+    const id = setInterval(load, 5000);
+    return () => clearInterval(id);
+  }, [branchId, scope]);
+
   const room = rooms.find((r) => r._id === selected);
-  const boardUrl = `/board/${branchId}${selected ? `?room=${selected}` : ''}`;
   const label = room ? room.name : 'Whole branch';
+  const boardUrl = `/board/${branchId}${scope}`;
+
+  const nowServing = preview?.departments?.flatMap((d) => d.nowServing) || [];
+  const firstToken = nowServing[0]?.tokenNumber;
 
   if (rooms.length === 0) {
     return (
-      <div className="max-w-4xl mx-auto animate-rise">
-        <PageHeader title="Displays & QR" />
+      <div>
+        <PageHeader eyebrow="Branch control" title="Displays & QR" />
         <Card>
           <EmptyState
             title="No rooms yet"
@@ -57,72 +75,99 @@ export default function Displays() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto animate-rise">
+    <div>
       <PageHeader
-        title="Displays & QR"
-        description="Every room has its own waiting screen and its own join code."
+        eyebrow="Branch control"
+        title="Two screens per room."
+        description="One code customers scan at the door, one screen they watch while they wait."
       />
 
-      {/* Room picker */}
-      <Card className="mb-4">
-        <p className="text-[13px] font-semibold text-ink-700 mb-3">Choose a room</p>
+      {/* Room chooser */}
+      <Card className="mb-5">
+        <MicroLabel className="mb-3">Choose a room</MicroLabel>
         <div className="flex flex-wrap gap-2">
           {rooms.map((r) => (
-            <button key={r._id} onClick={() => setSelected(r._id)}
-              className={`px-3.5 py-1.5 rounded-full text-sm font-medium border transition ${
-                selected === r._id ? 'bg-brand-600 border-brand-600 text-white' : 'border-ink-200 text-ink-600 hover:border-ink-300'
-              }`}>
+            <Chip key={r._id} active={selected === r._id} onClick={() => setSelected(r._id)}>
               {r.name}
-            </button>
+            </Chip>
           ))}
-          <button onClick={() => setSelected('')}
-            className={`px-3.5 py-1.5 rounded-full text-sm font-medium border transition ${
-              selected === '' ? 'bg-brand-600 border-brand-600 text-white' : 'border-ink-200 text-ink-600 hover:border-ink-300'
-            }`}>
-            Whole branch
-          </button>
+          <Chip active={selected === ''} onClick={() => setSelected('')}>Whole branch</Chip>
         </div>
         {room && (
-          <p className="text-xs text-ink-400 mt-3">
+          <p className="text-[13px] text-muted-2 mt-3.5">
             Shows: {(room.departments || []).map((d) => d.name).join(' · ') || 'no departments assigned'}
           </p>
         )}
       </Card>
 
-      <div className="grid md:grid-cols-2 gap-4">
+      <div className="grid gap-5" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.3fr)' }}>
+        {/* Join QR */}
         <Card className="text-center flex flex-col">
-          <p className="text-[0.95rem] font-semibold text-ink-800 mb-1">Join QR — {label}</p>
-          <p className="text-sm text-ink-500 mb-4">
-            Print this and put it at the {label.toLowerCase()} entrance. Scanning it joins this room's queue.
-          </p>
+          <MicroLabel>Join QR — {label}</MicroLabel>
           {qr ? (
             <>
-              <div className="bg-white border border-ink-200 rounded-2xl p-4 inline-block mx-auto">
-                <img src={qr.dataUrl} alt={`Join QR for ${label}`} className="w-52 h-52" />
+              <div className="relative mx-auto my-6 w-[186px] h-[186px]">
+                <img src={qr.dataUrl} alt={`Join QR for ${label}`} className="w-full h-full rounded-tile" />
+                {/* Brand badge sitting on the code, with a paper ring */}
+                <div className="absolute inset-0 grid place-items-center pointer-events-none">
+                  <div className="p-1.5 bg-surface rounded-[16px]">
+                    <Logo size="badge" static />
+                  </div>
+                </div>
               </div>
-              <p className="text-xs text-ink-400 mt-3">Refreshes every {qr.expiresInSeconds}s so screenshots can't be reused</p>
-              <a href={qr.url} target="_blank" rel="noreferrer" className="text-sm font-medium text-brand-600 hover:text-brand-700 mt-1">
+              <p className="font-mono text-[11px] text-muted-3">
+                Rotates every {qr.expiresInSeconds}s — screenshots go stale
+              </p>
+              <a href={qr.url} target="_blank" rel="noreferrer" className="text-[14px] font-semibold text-espresso hover:text-clay mt-2">
                 Open the join page ↗
               </a>
             </>
           ) : (
-            <div className="py-16"><div className="w-6 h-6 mx-auto rounded-full border-2 border-ink-200 border-t-brand-500 animate-spin" /></div>
+            <div className="py-24">
+              <div className="w-6 h-6 mx-auto rounded-full border-2 border-line border-t-espresso animate-spin" />
+            </div>
           )}
         </Card>
 
+        {/* Waiting screen preview */}
         <Card className="flex flex-col">
-          <p className="text-[0.95rem] font-semibold text-ink-800 mb-1">Waiting screen — {label}</p>
-          <p className="text-sm text-ink-500 mb-4">Open this full-screen on the TV in the {label.toLowerCase()}.</p>
-          <div className="flex-1 bg-[#0c0d13] rounded-2xl grid place-items-center min-h-[200px] mb-4">
-            <div className="text-center">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-slate-500 mb-2">{label}</p>
-              <p className="text-4xl font-bold text-amber-300 tnum">R-042</p>
-              <p className="text-xs text-slate-500 mt-2">now serving</p>
-            </div>
+          <MicroLabel>Waiting screen — {label}</MicroLabel>
+          <div className="flex-1 bg-board-bg rounded-tile mt-4 mb-5 px-7 py-8 min-h-[240px] flex flex-col justify-center">
+            <p className="font-mono text-[10px] tracking-[.3em] uppercase text-paper/40">{label}</p>
+            <p className="text-[86px] leading-none font-bold tracking-[-.04em] text-board-amber tnum mt-3">
+              {firstToken || '···'}
+            </p>
+            <p className="font-mono text-[11px] tracking-[.2em] uppercase text-paper/40 mt-3">now serving</p>
+            {nowServing.length > 1 && (
+              <div className="flex gap-2 mt-5">
+                {nowServing.slice(1, 4).map((n, i) => (
+                  <span key={i} className="font-mono text-[13px] px-2.5 py-1 rounded-[8px] bg-paper/10 text-paper/70">
+                    {n.tokenNumber}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
-          <a href={boardUrl} target="_blank" rel="noreferrer" className={`${btn.primary} w-full`}>Open this screen ↗</a>
+          <a href={boardUrl} target="_blank" rel="noreferrer" className={`${btn.primary} w-full`}>
+            Open this screen full-size ↗
+          </a>
         </Card>
       </div>
     </div>
+  );
+}
+
+function Chip({ active, onClick, children }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-4 py-2 rounded-pill text-[13px] font-semibold border transition-colors ${
+        active
+          ? 'bg-espresso border-espresso text-paper'
+          : 'bg-surface border-line-input text-muted hover:border-line-strong hover:text-ink'
+      }`}
+    >
+      {children}
+    </button>
   );
 }

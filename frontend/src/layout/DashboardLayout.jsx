@@ -3,26 +3,17 @@ import { NavLink, Outlet, useNavigate, useLocation, useParams, Link } from 'reac
 import api from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import { useBranchStore } from '../store/branchStore';
-import { Icon, NAV_ICON } from '../components/icons';
 import Toaster from '../components/Toaster';
+import { Wordmark } from '../components/Logo';
+import { LivePill } from '../components/ui';
 
 /**
- * The admin console shell. Navigation mirrors how the business is organized:
+ * The admin console shell.
  *
- *   ORGANIZATION  →  Branches (create locations, then step into one)
- *   BRANCH        →  Departments · Rooms & Counters · Analytics · Displays & QR
- *
- * Counters get their own dedicated screen instead of this shell — see
- * pages/counter/CounterConsole.jsx.
+ * Navigation mirrors how the business is organised: the ORGANIZATION group is
+ * always present, the BRANCH group appears once you step into a location, and
+ * LIVE SURFACES links out to the screens that face customers.
  */
-const BRANCH_NAV = [
-  ['', 'Overview'],
-  ['departments', 'Departments'],
-  ['rooms', 'Rooms & Counters'],
-  ['analytics', 'Analytics'],
-  ['displays', 'Displays & QR'],
-];
-
 export default function DashboardLayout() {
   const { user, organization, logout } = useAuthStore();
   const { branches, setBranches } = useBranchStore();
@@ -40,111 +31,174 @@ export default function DashboardLayout() {
 
   const branch = branches.find((b) => b._id === branchId);
   const orgName = organization?.name || 'Your organization';
+  const initials = (user?.name || 'A').split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 
   function handleLogout() {
     logout();
     navigate('/login');
   }
 
-  const linkCls = ({ isActive }) =>
-    `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition ${
-      isActive ? 'bg-brand-50 text-brand-700 font-semibold' : 'text-ink-600 hover:bg-ink-50 hover:text-ink-900'
-    }`;
-
   const Sidebar = (
-    <div className="h-full flex flex-col bg-white">
-      <div className="px-5 py-4 border-b border-ink-100 flex items-start justify-between">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="w-7 h-7 rounded-lg bg-brand-600 text-white grid place-items-center text-xs font-bold">Q</span>
-            <span className="font-semibold text-ink-900">QueueOS</span>
-          </div>
-          <p className="text-xs text-ink-400 mt-1.5 truncate max-w-[11rem]">{orgName}</p>
-        </div>
-        <button className="lg:hidden text-ink-400" onClick={() => setMobileOpen(false)} aria-label="Close menu"><Icon.x /></button>
+    <div className="h-full flex flex-col bg-sidebar overflow-x-hidden min-w-0">
+      <div className="px-5 py-5">
+        <Wordmark size="sidebar" sub={orgName} />
       </div>
 
-      <nav className="flex-1 p-3 overflow-y-auto">
-        <p className="px-3 pb-1.5 text-[11px] font-semibold text-ink-400 uppercase tracking-wider">Organization</p>
-        <div className="space-y-0.5">
-          <NavLink to="/branches" end className={linkCls}>
-            <Icon.building /> Branches
-          </NavLink>
-          <NavLink to="/administrators" className={linkCls}>
-            <Icon.users /> Administrators
-          </NavLink>
-        </div>
+      <nav className="flex-1 px-3 pb-4 overflow-y-auto overflow-x-hidden min-w-0">
+        <NavGroup label="Organization">
+          <NavRow to="/branches" end>Branches</NavRow>
+          <NavRow to="/administrators">Administrators</NavRow>
+        </NavGroup>
 
         {branch && (
-          <>
-            <div className="px-3 pt-5 pb-1.5">
-              <p className="text-[11px] font-semibold text-ink-400 uppercase tracking-wider">Branch</p>
-              <p className="text-sm font-semibold text-ink-800 truncate mt-0.5">{branch.name}</p>
-            </div>
-            <div className="space-y-0.5">
-              {BRANCH_NAV.map(([seg, label]) => {
-                const to = `/branches/${branchId}${seg ? `/${seg}` : ''}`;
-                const IconCmp = Icon[NAV_ICON[seg || 'overview']] || Icon.grid;
-                return (
-                  <NavLink key={seg} to={to} end={seg === ''} className={linkCls}>
-                    <IconCmp /> {label}
-                  </NavLink>
-                );
-              })}
-            </div>
-            <Link to="/branches" className="flex items-center gap-2 px-3 py-2 mt-2 text-xs text-ink-400 hover:text-ink-600">
-              ← All branches
-            </Link>
-          </>
+          <NavGroup label={`Branch — ${branch.name}`}>
+            <NavRow to={`/branches/${branchId}`} end>Overview</NavRow>
+            <NavRow to={`/branches/${branchId}/departments`}>Departments</NavRow>
+            <NavRow to={`/branches/${branchId}/rooms`}>Rooms &amp; Counters</NavRow>
+            <NavRow to={`/branches/${branchId}/analytics`}>Analytics</NavRow>
+            <NavRow to={`/branches/${branchId}/displays`}>Displays &amp; QR</NavRow>
+          </NavGroup>
+        )}
+
+        {branch && (
+          <NavGroup label="Live surfaces">
+            <NavRow href={`/board/${branchId}`} live>Waiting screen</NavRow>
+            <NavRow href="/counter" live>Counter desk</NavRow>
+          </NavGroup>
         )}
       </nav>
 
-      <div className="p-3 border-t border-ink-100">
-        <div className="px-2 mb-2">
-          <p className="text-sm font-medium text-ink-900 truncate">{user?.name}</p>
-          <p className="text-xs text-ink-400">Administrator</p>
+      <div className="p-3 border-t border-line">
+        <div className="flex items-center gap-3 px-2 py-2">
+          <span className="w-9 h-9 rounded-[11px] bg-espresso text-paper grid place-items-center font-mono text-[12px] font-semibold shrink-0">
+            {initials}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[14px] font-semibold text-ink truncate">{user?.name}</p>
+            <p className="font-mono text-[10px] tracking-[.16em] uppercase text-muted-3">Administrator</p>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="text-[13px] font-semibold text-muted-2 hover:text-clay transition-colors shrink-0"
+          >
+            Exit
+          </button>
         </div>
-        <button onClick={handleLogout} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-ink-600 hover:bg-ink-50 transition">
-          <Icon.logout /> Log out
-        </button>
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen flex bg-ink-50 text-ink-800">
-      <aside className="hidden lg:block w-60 shrink-0 border-r border-ink-200/70">{Sidebar}</aside>
+    <div className="min-h-screen bg-paper text-ink lg:grid" style={{ gridTemplateColumns: '250px minmax(0,1fr)' }}>
+      <aside className="hidden lg:block border-r border-line min-w-0">{Sidebar}</aside>
 
       {mobileOpen && (
-        <div className="lg:hidden fixed inset-0 z-40 flex">
-          <div className="absolute inset-0 bg-black/30" onClick={() => setMobileOpen(false)} />
-          <aside className="relative w-64 shadow-xl">{Sidebar}</aside>
+        <div className="lg:hidden fixed inset-0 z-50 flex">
+          <div className="absolute inset-0 bg-ink/30" onClick={() => setMobileOpen(false)} />
+          <aside className="relative w-[260px] shadow-lift">{Sidebar}</aside>
         </div>
       )}
 
-      <div className="flex-1 min-w-0 flex flex-col">
-        <header className="h-14 bg-white/80 backdrop-blur border-b border-ink-200/70 flex items-center justify-between px-4 sm:px-6 sticky top-0 z-20">
-          <div className="flex items-center gap-3 min-w-0">
-            <button className="lg:hidden text-ink-500" onClick={() => setMobileOpen(true)} aria-label="Open menu"><Icon.menu /></button>
-            {branch ? (
-              <nav className="flex items-center gap-2 text-sm min-w-0">
-                <Link to="/branches" className="text-ink-400 hover:text-ink-600 hidden sm:inline">Branches</Link>
-                <span className="text-ink-300 hidden sm:inline">/</span>
-                <span className="font-semibold text-ink-800 truncate">{branch.name}</span>
+      <div className="min-w-0 flex flex-col">
+        <header className="sticky top-0 z-30 border-b border-line bg-paper/80 backdrop-blur">
+          <div className="max-w-[1280px] mx-auto px-6 lg:px-10 h-16 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                className="lg:hidden text-ink-2 text-xl leading-none"
+                onClick={() => setMobileOpen(true)}
+                aria-label="Open menu"
+              >
+                ≡
+              </button>
+              <nav className="flex items-center gap-2 text-[14px] min-w-0">
+                <Link to="/branches" className="text-muted-2 hover:text-ink font-normal hidden sm:inline">
+                  Branches
+                </Link>
+                {branch && (
+                  <>
+                    <span className="text-line-strong hidden sm:inline">/</span>
+                    <span className="font-bold text-ink truncate">{branch.name}</span>
+                  </>
+                )}
               </nav>
-            ) : (
-              <span className="text-sm font-semibold text-ink-800">{orgName}</span>
-            )}
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <LivePill />
+              <span className="font-mono text-[11px] text-muted-3 truncate max-w-[200px] hidden md:inline">
+                {user?.email}
+              </span>
+            </div>
           </div>
-          <span className="text-xs text-ink-400 truncate max-w-[45%]">{user?.email}</span>
         </header>
 
-        <main className="flex-1 p-4 sm:p-6 overflow-auto">
-          <Outlet />
+        <main className="flex-1">
+          <div className="max-w-[1280px] mx-auto px-6 lg:px-10 pt-10 pb-[72px]">
+            <Outlet />
+          </div>
         </main>
       </div>
 
       <Toaster />
     </div>
+  );
+}
+
+function NavGroup({ label, children }) {
+  return (
+    <div className="mb-6">
+      <p className="font-mono text-[10px] tracking-[.18em] uppercase text-muted-3 px-3 mb-2">
+        {label}
+      </p>
+      <div className="space-y-1">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * A nav row: 7px square marker + label. `href` (rather than `to`) opens a live
+ * surface in a new tab, since those are meant to run on their own screen.
+ */
+function NavRow({ to, href, end, live, children }) {
+  const base =
+    'flex items-center gap-3 px-3 py-2 rounded-[10px] text-[14px] transition-all duration-150 min-w-0';
+  const marker = (active) =>
+    `w-[7px] h-[7px] rounded-[2px] shrink-0 ${
+      live ? 'bg-clay' : active ? 'bg-espresso' : 'bg-[#CFC7B5]'
+    }`;
+
+  if (href) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className={`${base} text-muted hover:text-ink font-normal hover:bg-surface/60`}
+      >
+        <span className={marker(false)} />
+        <span className="truncate">{children}</span>
+        <span className="ml-auto text-[11px] text-muted-3">↗</span>
+      </a>
+    );
+  }
+
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        `${base} ${
+          isActive
+            ? 'bg-surface border border-line-input shadow-rest font-semibold text-ink'
+            : 'border border-transparent text-muted hover:text-ink font-normal'
+        }`
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <span className={marker(isActive)} />
+          <span className="truncate">{children}</span>
+        </>
+      )}
+    </NavLink>
   );
 }

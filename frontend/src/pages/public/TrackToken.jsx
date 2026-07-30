@@ -1,19 +1,19 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import publicApi from '../../api/publicClient';
+import Logo from '../../components/Logo';
 
 /**
- * Live token tracking — the screen a customer keeps open. Shows their token,
- * a progress ring from where they started to the front of the line, people
- * ahead, estimated wait, and the projected "your turn around" clock time.
- * Flips to a full "It's your turn" state when called.
+ * Live token tracking — the screen a customer keeps open on their phone.
+ * Shows their place, the estimated wait, and the projected clock time, then
+ * flips to a full "it's your turn" state when they're called.
  */
 const STATUS_LABEL = {
   waiting: 'In queue',
   serving: "It's your turn",
   held: 'On hold',
-  skipped: 'Skipped — see staff',
-  completed: 'Completed',
+  skipped: 'Please see the desk',
+  completed: 'All done',
   missed: 'Missed',
   cancelled: 'Cancelled',
 };
@@ -26,10 +26,10 @@ function formatEta(seconds) {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
-function turnClockTime(etaSeconds) {
-  if (etaSeconds == null) return null;
-  const d = new Date(Date.now() + etaSeconds * 1000);
-  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+function turnClock(seconds) {
+  if (seconds == null) return null;
+  return new Date(Date.now() + seconds * 1000)
+    .toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
 export default function TrackToken() {
@@ -60,7 +60,7 @@ export default function TrackToken() {
   }, [load, session, tokenId]);
 
   async function cancel() {
-    if (!confirm('Cancel your spot? You will lose your place in line.')) return;
+    if (!confirm('Leave the queue? You will lose your place.')) return;
     try {
       await publicApi.post(`/token/${tokenId}/cancel`, {}, { headers: { 'x-session': session } });
       load();
@@ -72,9 +72,9 @@ export default function TrackToken() {
   if (error) {
     return (
       <Shell>
-        <div className="bg-white rounded-2xl shadow-card border border-ink-200/70 p-8 text-center animate-rise">
-          <p className="text-ink-700 font-medium">Something's not right</p>
-          <p className="text-sm text-ink-500 mt-2">{error}</p>
+        <div className="bg-surface border border-line rounded-[22px] shadow-card p-8 text-center animate-rise">
+          <p className="font-semibold text-ink">Something's not right</p>
+          <p className="text-[14px] text-muted mt-2">{error}</p>
         </div>
       </Shell>
     );
@@ -82,8 +82,8 @@ export default function TrackToken() {
   if (!token) {
     return (
       <Shell>
-        <div className="bg-white rounded-2xl shadow-card border border-ink-200/70 p-8 text-center">
-          <div className="w-6 h-6 mx-auto rounded-full border-2 border-ink-200 border-t-brand-500 animate-spin" />
+        <div className="bg-surface border border-line rounded-[22px] shadow-card p-10 text-center">
+          <div className="w-6 h-6 mx-auto rounded-full border-2 border-line border-t-espresso animate-spin" />
         </div>
       </Shell>
     );
@@ -94,40 +94,42 @@ export default function TrackToken() {
   const active = ['waiting', 'held', 'skipped'].includes(token.status);
   const ahead = waiting ? Math.max(0, token.position - 1) : 0;
 
-  // Ring progress: how far you've moved from your starting position.
-  const progress = waiting && startPos && startPos > 1 ? Math.min(1, Math.max(0, (startPos - token.position) / (startPos - 1))) : waiting ? 0.05 : 1;
+  // Ring fills as they move from where they started to the front.
+  const progress =
+    waiting && startPos && startPos > 1
+      ? Math.min(1, Math.max(0, (startPos - token.position) / (startPos - 1)))
+      : waiting ? 0.04 : 1;
   const R = 84;
   const C = 2 * Math.PI * R;
 
   return (
     <Shell>
       <div
-        className={`rounded-2xl shadow-card border p-7 text-center animate-rise ${
-          isTurn ? 'bg-emerald-600 border-emerald-600' : 'bg-white border-ink-200/70'
+        className={`rounded-[24px] border p-8 text-center animate-rise ${
+          isTurn ? 'bg-espresso border-espresso' : 'bg-surface border-line shadow-card'
         }`}
       >
-        <p className={`text-xs font-semibold uppercase tracking-[0.18em] ${isTurn ? 'text-emerald-100' : 'text-ink-400'}`}>
-          {token.service}
+        <p className={`font-mono text-[11px] tracking-[.22em] uppercase ${isTurn ? 'text-board-amber' : 'text-clay'}`}>
+          {token.department}
         </p>
 
-        {/* Token number inside the progress ring */}
-        <div className="relative w-[200px] h-[200px] mx-auto my-5">
+        <div className="relative w-[210px] h-[210px] mx-auto my-6">
           <svg viewBox="0 0 200 200" className="w-full h-full -rotate-90">
-            <circle cx="100" cy="100" r={R} fill="none" strokeWidth="10" className={isTurn ? 'stroke-emerald-500' : 'stroke-ink-100'} />
+            <circle cx="100" cy="100" r={R} fill="none" strokeWidth="9"
+              className={isTurn ? 'stroke-paper/15' : 'stroke-espresso-tint'} />
             <circle
-              cx="100" cy="100" r={R} fill="none" strokeWidth="10" strokeLinecap="round"
-              strokeDasharray={C}
-              strokeDashoffset={C * (1 - progress)}
-              className={isTurn ? 'stroke-white' : 'stroke-brand-500'}
+              cx="100" cy="100" r={R} fill="none" strokeWidth="9" strokeLinecap="round"
+              strokeDasharray={C} strokeDashoffset={C * (1 - progress)}
+              className={isTurn ? 'stroke-board-amber' : 'stroke-espresso'}
               style={{ transition: 'stroke-dashoffset .6s ease' }}
             />
           </svg>
           <div className="absolute inset-0 grid place-items-center">
             <div>
-              <p className={`text-[2.6rem] leading-none font-bold tracking-tight tnum ${isTurn ? 'text-white' : 'text-ink-900'}`}>
+              <p className={`font-mono text-[44px] leading-none font-semibold tnum ${isTurn ? 'text-paper' : 'text-ink'}`}>
                 {token.tokenNumber}
               </p>
-              <p className={`text-xs mt-1.5 font-medium ${isTurn ? 'text-emerald-100' : 'text-ink-400'}`}>
+              <p className={`text-[12px] mt-2 font-semibold ${isTurn ? 'text-paper/60' : 'text-muted-2'}`}>
                 {STATUS_LABEL[token.status]}
               </p>
             </div>
@@ -135,9 +137,9 @@ export default function TrackToken() {
         </div>
 
         {isTurn ? (
-          <div className="text-white">
-            <p className="text-xl font-semibold">Please proceed to</p>
-            <p className="text-2xl font-bold mt-0.5">{token.counter || 'the counter'}</p>
+          <div className="text-paper">
+            <p className="text-[17px] text-paper/60">Please proceed to</p>
+            <p className="text-[28px] font-bold tracking-[-.02em] mt-1">{token.counter || 'the counter'}</p>
           </div>
         ) : waiting ? (
           <>
@@ -146,32 +148,32 @@ export default function TrackToken() {
               <Stat label="Est. wait" value={formatEta(token.etaSeconds)} />
             </div>
             {token.etaSeconds != null && (
-              <p className="text-sm text-ink-500 mt-4">
-                Your turn around <span className="font-semibold text-ink-800">{turnClockTime(token.etaSeconds)}</span>
+              <p className="text-[14px] text-muted mt-4">
+                Your turn around <span className="font-semibold text-ink">{turnClock(token.etaSeconds)}</span>
               </p>
             )}
             {ahead > 0 && ahead <= 5 && (
-              <p className="text-[13px] font-medium text-amber-700 bg-amber-50 rounded-xl px-4 py-2.5 mt-4">
+              <p className="text-[13px] font-semibold text-clay-ink bg-clay-tint border border-clay-tint-border rounded-tile px-4 py-3 mt-4">
                 Almost there — only {ahead} ahead. Please stay close by.
               </p>
             )}
           </>
         ) : (
-          <p className="text-sm text-ink-500">This token is no longer active.</p>
+          <p className="text-[14px] text-muted">This token is no longer active.</p>
         )}
 
         {active && (
           <button
             onClick={cancel}
-            className="mt-6 w-full py-2.5 rounded-xl border border-ink-200 text-sm text-ink-500 hover:bg-ink-50 transition"
+            className="mt-6 w-full py-3 rounded-[11px] border border-line-input text-[14px] font-semibold text-muted hover:text-ink hover:border-line-strong transition-colors"
           >
-            Cancel my spot
+            Leave the queue
           </button>
         )}
       </div>
 
-      <p className="text-center text-xs text-ink-400 mt-5 flex items-center justify-center gap-1.5">
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse-soft" />
+      <p className="flex items-center justify-center gap-2 font-mono text-[10px] tracking-[.2em] uppercase text-muted-3 mt-6">
+        <span className="w-1.5 h-1.5 rounded-full bg-success animate-blink" />
         Live
       </p>
     </Shell>
@@ -180,17 +182,27 @@ export default function TrackToken() {
 
 function Stat({ label, value }) {
   return (
-    <div className="bg-ink-50 rounded-xl px-4 py-3.5">
-      <p className="text-[1.55rem] leading-none font-bold text-ink-900 tnum">{value}</p>
-      <p className="text-[11px] font-medium text-ink-400 uppercase tracking-wider mt-1.5">{label}</p>
+    <div className="bg-surface-sunken rounded-tile px-4 py-4">
+      <p className="text-[26px] leading-none font-bold tracking-[-.03em] text-ink tnum">{value}</p>
+      <p className="font-mono text-[10px] tracking-[.16em] uppercase text-muted-3 mt-2">{label}</p>
     </div>
   );
 }
 
 function Shell({ children }) {
   return (
-    <div className="min-h-screen bg-ink-50 flex flex-col items-center px-4 py-8 sm:justify-center">
-      <div className="w-full max-w-sm">{children}</div>
+    <div className="relative min-h-screen bg-paper flex flex-col items-center px-5 py-10 sm:justify-center">
+      <div className="absolute inset-0 paper-grid pointer-events-none" />
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{ background: 'radial-gradient(70% 50% at 50% 30%, #FFFDF8, transparent 70%)' }}
+      />
+      <div className="relative w-full max-w-[380px]">
+        <div className="flex justify-center mb-6">
+          <Logo size="badge" />
+        </div>
+        {children}
+      </div>
     </div>
   );
 }

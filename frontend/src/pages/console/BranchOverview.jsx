@@ -3,14 +3,15 @@ import { Link, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import { toast } from '../../store/toastStore';
 import { useBranchStore } from '../../store/branchStore';
-import { PageHeader, Card, StatCard, SectionTitle, btn, field } from '../../components/ui';
-import { Icon, NAV_ICON } from '../../components/icons';
+import {
+  PageHeader, Card, StatCard, SectionTitle, MicroLabel, Badge, btn, field,
+} from '../../components/ui';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 /**
- * Branch home: live numbers, shortcuts into the branch's own sections, and the
- * location's settings (address, timezone, opening hours).
+ * Branch home: the room in one glance, shortcuts into each configuration
+ * surface, and the location's own settings.
  */
 export default function BranchOverview() {
   const { branchId } = useParams();
@@ -18,6 +19,7 @@ export default function BranchOverview() {
   const [branch, setBranch] = useState(null);
   const [live, setLive] = useState({ waiting: 0, serving: 0 });
   const [summary, setSummary] = useState(null);
+  const [counts, setCounts] = useState({ departments: 0, rooms: 0, counters: 0 });
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -30,6 +32,16 @@ export default function BranchOverview() {
         serving: data.tokens.filter((t) => t.status === 'serving').length,
       });
     }).catch(() => {});
+    Promise.all([
+      api.get(`/departments/branch/${branchId}`).then((r) => r.data.departments.length).catch(() => 0),
+      api.get(`/rooms/branch/${branchId}`).then((r) => r.data.rooms).catch(() => []),
+    ]).then(([departments, rooms]) => {
+      setCounts({
+        departments,
+        rooms: rooms.length,
+        counters: rooms.reduce((n, r) => n + (r.counters?.length || 0), 0),
+      });
+    });
   }, [branchId]);
 
   async function save(e) {
@@ -37,11 +49,8 @@ export default function BranchOverview() {
     setBusy(true);
     try {
       const { data } = await api.patch(`/branches/${branchId}`, {
-        name: branch.name,
-        address: branch.address,
-        phone: branch.phone,
-        timezone: branch.timezone,
-        openingHours: branch.openingHours,
+        name: branch.name, address: branch.address, phone: branch.phone,
+        timezone: branch.timezone, openingHours: branch.openingHours,
       });
       setBranch(data.branch);
       const list = await api.get('/branches');
@@ -54,82 +63,105 @@ export default function BranchOverview() {
     }
   }
 
-  function setHour(day, patch) {
+  const setHour = (day, patch) =>
     setBranch((b) => ({
       ...b,
       openingHours: b.openingHours.map((h) => (h.day === day ? { ...h, ...patch } : h)),
     }));
-  }
 
-  if (!branch) return <p className="text-sm text-ink-400">Loading…</p>;
+  if (!branch) return <p className="text-sm text-muted-2">Loading…</p>;
 
-  const sections = [
-    ['departments', 'Departments', 'The queues this branch offers'],
-    ['rooms', 'Rooms & Counters', 'Physical spaces and the desk logins inside them'],
-    ['displays', 'Displays & QR', 'A screen and join code per room'],
-    ['analytics', 'Analytics', 'Wait times, volume and no-shows'],
+  const cards = [
+    ['departments', 'Departments', 'The queues this branch offers.', 'espresso'],
+    ['rooms', 'Rooms & Counters', 'Physical spaces and the desk logins inside them.', 'espresso'],
+    ['analytics', 'Analytics', 'Wait times, volume and no-shows.', 'clay'],
+    ['displays', 'Displays & QR', 'A screen and join code for every room.', 'clay'],
   ];
 
   return (
-    <div className="max-w-4xl mx-auto animate-rise">
-      <PageHeader title={branch.name} description={branch.address || 'No address set'} />
+    <div>
+      <PageHeader
+        eyebrow="Branch control"
+        title={branch.name}
+        description={`${counts.departments} departments awake. ${counts.counters} counters listening. Here's the room in one glance.`}
+      />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Waiting now" value={live.waiting} accent />
-        <StatCard label="Being served" value={live.serving} />
-        <StatCard label="Avg wait (24h)" value={summary ? `${Math.round(summary.avgWaitSeconds / 60)}m` : '—'} />
-        <StatCard label="No-show rate" value={summary ? `${Math.round(summary.noShowRate * 100)}%` : '—'} />
+      <div className="grid gap-4 mb-10" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))' }}>
+        <StatCard label="Waiting now" value={live.waiting} delta={live.waiting === 0 ? 'clear' : 'in line'} deltaTone={live.waiting === 0 ? 'success' : 'muted'} />
+        <StatCard label="Being served" value={live.serving} delta={live.serving === 0 ? 'idle' : 'active'} deltaTone="muted" />
+        <StatCard label="Avg wait (24h)" value={summary ? `${Math.round(summary.avgWaitSeconds / 60)}m` : '—'} delta={summary?.completedCount ? `${summary.completedCount} served` : 'no data yet'} deltaTone="muted" />
+        <StatCard label="No-show rate" value={summary ? `${Math.round(summary.noShowRate * 100)}%` : '—'} accent="clay" delta={summary && summary.noShowRate === 0 ? 'steady' : ''} deltaTone="clay" />
       </div>
 
-      <p className="text-xs font-semibold text-ink-400 uppercase tracking-wider mb-3">Configure this branch</p>
-      <div className="grid sm:grid-cols-2 gap-4 mb-8">
-        {sections.map(([seg, title, desc]) => {
-          const IconCmp = Icon[NAV_ICON[seg]] || Icon.grid;
-          return (
-            <Link key={seg} to={`/branches/${branchId}/${seg}`} className="group">
-              <Card className="h-full transition group-hover:shadow-card-hover group-hover:border-brand-200">
-                <div className="flex items-start gap-4">
-                  <span className="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 grid place-items-center shrink-0">
-                    <IconCmp />
-                  </span>
-                  <div>
-                    <p className="font-semibold text-ink-900">{title}</p>
-                    <p className="text-sm text-ink-500 mt-0.5">{desc}</p>
-                  </div>
-                </div>
-              </Card>
-            </Link>
-          );
-        })}
+      <MicroLabel className="mb-4">Configure this branch</MicroLabel>
+      <div className="grid gap-4 mb-10" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))' }}>
+        {cards.map(([seg, title, desc, tone], i) => (
+          <Link key={seg} to={`/branches/${branchId}/${seg}`} className="block">
+            <Card hover className="h-full animate-rise" style={{ animationDelay: `${i * 45}ms` }}>
+              <span
+                className={`w-11 h-11 rounded-[13px] grid place-items-center mb-4 border ${
+                  tone === 'clay'
+                    ? 'bg-clay-tint border-clay-tint-border text-clay'
+                    : 'bg-espresso-tint border-espresso-tint-border text-espresso'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-[3px] bg-current" />
+              </span>
+              <p className="text-[17px] font-bold tracking-[-.02em] text-ink">{title}</p>
+              <p className="text-[14px] text-muted mt-1.5">{desc}</p>
+            </Card>
+          </Link>
+        ))}
       </div>
 
       <Card>
         <SectionTitle>Location settings</SectionTitle>
-        <form onSubmit={save} className="grid gap-4">
-          <div className="grid sm:grid-cols-2 gap-3">
-            <input className={field} value={branch.name || ''} onChange={(e) => setBranch({ ...branch, name: e.target.value })} placeholder="Branch name" />
-            <input className={field} value={branch.address || ''} onChange={(e) => setBranch({ ...branch, address: e.target.value })} placeholder="Address" />
-            <input className={field} value={branch.phone || ''} onChange={(e) => setBranch({ ...branch, phone: e.target.value })} placeholder="Phone" />
-            <input className={field} value={branch.timezone || ''} onChange={(e) => setBranch({ ...branch, timezone: e.target.value })} placeholder="Timezone (e.g. Asia/Kolkata)" />
+        <form onSubmit={save} className="grid gap-6">
+          <div className="grid sm:grid-cols-2 gap-4">
+            <label className="grid gap-2">
+              <MicroLabel>Name</MicroLabel>
+              <input className={field} value={branch.name || ''} onChange={(e) => setBranch({ ...branch, name: e.target.value })} />
+            </label>
+            <label className="grid gap-2">
+              <MicroLabel>Street address</MicroLabel>
+              <input className={field} value={branch.address || ''} onChange={(e) => setBranch({ ...branch, address: e.target.value })} />
+            </label>
+            <label className="grid gap-2">
+              <MicroLabel>Phone</MicroLabel>
+              <input className={field} value={branch.phone || ''} onChange={(e) => setBranch({ ...branch, phone: e.target.value })} />
+            </label>
+            <label className="grid gap-2">
+              <MicroLabel>Timezone</MicroLabel>
+              <input className={field} value={branch.timezone || ''} onChange={(e) => setBranch({ ...branch, timezone: e.target.value })} />
+            </label>
           </div>
 
           <div>
-            <p className="text-[13px] font-medium text-ink-600 mb-2">Opening hours</p>
-            <div className="space-y-1.5">
+            <MicroLabel className="mb-3">Opening hours</MicroLabel>
+            <div className="grid sm:grid-cols-2 gap-x-8 gap-y-1">
               {(branch.openingHours || []).map((h) => (
-                <div key={h.day} className="flex items-center gap-3 text-sm">
-                  <span className="w-24 text-ink-600">{DAYS[h.day]}</span>
-                  <label className="flex items-center gap-1.5 text-xs text-ink-500">
-                    <input type="checkbox" checked={!h.isClosed} onChange={(e) => setHour(h.day, { isClosed: !e.target.checked })} />
-                    Open
-                  </label>
-                  <input type="time" value={h.open} disabled={h.isClosed}
-                    onChange={(e) => setHour(h.day, { open: e.target.value })}
-                    className="px-2 py-1 rounded-lg border border-ink-200 text-sm disabled:opacity-40" />
-                  <span className="text-ink-400">–</span>
-                  <input type="time" value={h.close} disabled={h.isClosed}
-                    onChange={(e) => setHour(h.day, { close: e.target.value })}
-                    className="px-2 py-1 rounded-lg border border-ink-200 text-sm disabled:opacity-40" />
+                <div key={h.day} className="flex items-center gap-3 py-2 border-b border-line-soft">
+                  <span className="text-[14px] text-ink-2 w-[104px] shrink-0">{DAYS[h.day]}</span>
+                  <button
+                    type="button"
+                    onClick={() => setHour(h.day, { isClosed: !h.isClosed })}
+                    className="shrink-0"
+                  >
+                    <Badge tone={h.isClosed ? 'neutral' : 'success'}>{h.isClosed ? 'Closed' : 'Open'}</Badge>
+                  </button>
+                  <div className="ml-auto flex items-center gap-1.5">
+                    {h.isClosed ? (
+                      <span className="font-mono text-[13px] text-muted-3">—</span>
+                    ) : (
+                      <>
+                        <input type="time" value={h.open} onChange={(e) => setHour(h.day, { open: e.target.value })}
+                          className="font-mono text-[13px] px-2 py-1 rounded-[8px] border border-line-input bg-surface-sunken" />
+                        <span className="text-muted-3">—</span>
+                        <input type="time" value={h.close} onChange={(e) => setHour(h.day, { close: e.target.value })}
+                          className="font-mono text-[13px] px-2 py-1 rounded-[8px] border border-line-input bg-surface-sunken" />
+                      </>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

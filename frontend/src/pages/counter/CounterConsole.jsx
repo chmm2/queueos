@@ -7,14 +7,15 @@ import { toast } from '../../store/toastStore';
 import { useTerms } from '../../lib/terms';
 import Toaster from '../../components/Toaster';
 import PriorityDialog from '../../components/PriorityDialog';
-import { Badge, STATUS_TONE } from '../../components/ui';
-import { Icon } from '../../components/icons';
+import Logo from '../../components/Logo';
+import { Card, Badge, MicroLabel, EmptyState, STATUS_TONE, btn } from '../../components/ui';
 
 /**
  * The counter workstation — the whole screen for the machine at a desk.
  *
- * There is no counter picker and no branch switcher: this machine IS the
+ * There's no counter picker and no branch switcher: this machine IS the
  * counter it signed in as, so it can only ever serve its own room's queues.
+ * One button. The rest of the room takes care of itself.
  */
 export default function CounterConsole() {
   const { counter, organization, token: authToken, logout, setCounter } = useAuthStore();
@@ -25,7 +26,7 @@ export default function CounterConsole() {
   const [tokens, setTokens] = useState([]);
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(new Date());
-  const [priorityFor, setPriorityFor] = useState(null); // token awaiting a reason
+  const [priorityFor, setPriorityFor] = useState(null);
 
   const branchId = counter?.branch;
 
@@ -74,7 +75,7 @@ export default function CounterConsole() {
     try {
       const { data } = await api.post('/tokens/call-next');
       if (data.token) toast.success(`Now serving ${data.token.tokenNumber}`);
-      else toast.info('No one is waiting.');
+      else toast.info('Nobody is waiting.');
       refresh();
     } catch (e) {
       toast.error(e.response?.data?.message || 'Could not call next.');
@@ -94,10 +95,7 @@ export default function CounterConsole() {
     }
   }
 
-  /**
-   * No-show: they go back in line further down, or out entirely once they've
-   * used up their chances. The response tells us which happened.
-   */
+  /** No-show: further down the line, or out once the chances are used up. */
   async function markNoShow(id) {
     try {
       const { data } = await api.patch(`/tokens/${id}/no-show`, {});
@@ -127,158 +125,174 @@ export default function CounterConsole() {
     toast.info(`Counter ${data.counter.status}`);
   }
 
-  function handleLogout() {
-    logout();
-    navigate('/login');
-  }
-
   const isOpen = me?.status === 'open';
+  const roomName = me?.room?.name || counter?.room?.name || 'Your counter';
 
   return (
-    <div className="min-h-screen bg-ink-50 flex flex-col">
-      {/* Counter identity bar */}
-      <header className="bg-white border-b border-ink-200/70 px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="w-9 h-9 rounded-lg bg-brand-600 text-white grid place-items-center text-xs font-bold shrink-0">Q</span>
+    <div className="min-h-screen bg-paper flex flex-col">
+      {/* Identity bar */}
+      <header className="border-b border-line bg-surface">
+        <div className="max-w-[1180px] mx-auto px-6 lg:px-10 py-4 flex flex-wrap items-center gap-4">
+          <Logo size="sidebar" />
           <div className="min-w-0">
-            <p className="font-semibold text-ink-900 flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-[13px] bg-ink-100 rounded px-1.5 py-0.5">{me?.code || counter?.code}</span>
-              <Badge tone={isOpen ? 'success' : 'neutral'}>{me?.status || 'closed'}</Badge>
-            </p>
-            <p className="text-xs text-ink-400 truncate">
-              {organization?.name} · {me?.room?.name || counter?.room?.name}
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="font-mono text-[12px] px-2 py-0.5 rounded-[6px] bg-espresso text-paper">
+                {me?.code || counter?.code}
+              </span>
+              <Badge tone={isOpen ? 'success' : 'neutral'} dot={isOpen}>
+                counter {me?.status || 'closed'}
+              </Badge>
+            </div>
+            <p className="font-mono text-[10px] tracking-[.16em] uppercase text-muted-3 mt-1.5 truncate">
+              {organization?.name}
             </p>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-ink-400 tnum hidden sm:inline">
-            {now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-          </span>
-          <button onClick={toggleOpen} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-            isOpen ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-emerald-600 text-white hover:bg-emerald-700'
-          }`}>
-            {isOpen ? 'Close counter' : 'Open counter'}
-          </button>
-          <button onClick={handleLogout} className="p-2 rounded-lg text-ink-400 hover:bg-ink-100" title="Sign out">
-            <Icon.logout />
-          </button>
+
+          <div className="ml-auto flex items-center gap-3">
+            <span className="font-mono text-[15px] text-muted tnum hidden sm:inline">
+              {now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+            </span>
+            <button onClick={toggleOpen} className={isOpen ? btn.danger : btn.primary}>
+              {isOpen ? 'Close counter' : 'Open counter'}
+            </button>
+            <button
+              onClick={() => { logout(); navigate('/login'); }}
+              className="text-[13px] font-semibold text-muted-2 hover:text-clay transition-colors"
+            >
+              Exit
+            </button>
+          </div>
         </div>
       </header>
 
-      <main className="flex-1 p-4 sm:p-6 max-w-5xl w-full mx-auto">
+      <main className="flex-1 max-w-[1180px] w-full mx-auto px-6 lg:px-10 py-10">
+        <h1 className="text-[42px] leading-[1.05] font-bold tracking-[-.035em] text-ink animate-rise">
+          {roomName}
+        </h1>
+        <p className="text-[16px] text-muted mt-2.5 mb-8">
+          One button. The rest of the room takes care of itself.
+        </p>
+
         {!isOpen && (
-          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 mb-4">
+          <div className="rounded-tile border border-warning-tint-border bg-warning-tint px-5 py-3.5 mb-6 text-[14px] text-warning-ink">
             This counter is closed — open it to start calling {t.customerPlural.toLowerCase()}.
-          </p>
+          </div>
         )}
 
-        {/* Action zone */}
-        <div className="bg-white rounded-2xl border border-ink-200/70 shadow-card p-6 mb-5">
-          <div className="flex flex-col md:flex-row items-stretch gap-5">
+        <div className="grid gap-5 mb-6" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.6fr)' }}>
+          {/* Call next */}
+          <div className="relative grid place-items-center">
+            {isOpen && waiting.length > 0 && (
+              <span className="absolute inset-0 rounded-card bg-espresso/20 animate-ripple pointer-events-none" />
+            )}
             <button
               onClick={callNext}
               disabled={busy || !isOpen}
-              className="md:w-72 shrink-0 rounded-2xl bg-brand-600 hover:bg-brand-700 active:scale-[.99] disabled:opacity-40 disabled:pointer-events-none text-white font-semibold text-xl px-8 py-10 transition shadow-sm"
+              className="relative w-full h-full min-h-[220px] rounded-card bg-espresso hover:bg-espresso-hover active:scale-[.99] disabled:opacity-40 disabled:pointer-events-none text-paper transition-all duration-150 px-8 py-10"
             >
-              {busy ? 'Calling…' : 'Call next'}
-              <span className="block text-sm font-normal text-brand-200 mt-2">{waiting.length} waiting</span>
+              <span className="block text-[30px] font-bold tracking-[-.03em]">
+                {busy ? 'Calling…' : 'Call next'}
+              </span>
+              <span className="block font-mono text-[11px] tracking-[.2em] uppercase text-paper/50 mt-3">
+                {waiting.length} waiting
+              </span>
             </button>
-
-            <div className="flex-1 rounded-2xl bg-ink-50 px-6 py-5 flex items-center">
-              {serving ? (
-                <div className="w-full flex flex-wrap items-center justify-between gap-4">
-                  <div>
-                    <p className="text-[11px] font-semibold text-ink-400 uppercase tracking-[0.15em]">Now serving</p>
-                    <p className="text-5xl leading-tight font-bold text-ink-900 tnum">{serving.tokenNumber}</p>
-                    <p className="text-sm text-ink-500">
-                      {serving.department?.name}
-                      {serving.customerName && ` · ${serving.customerName}`}
-                    </p>
-                    {serving.noShowCount > 0 && (
-                      <p className="text-xs text-orange-700 mt-1">
-                        {serving.noShowCount} previous no-show{serving.noShowCount > 1 ? 's' : ''}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button onClick={() => act(serving._id, 'hold', serving.tokenNumber)} className="px-4 py-3 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-800 text-sm font-medium transition">Hold</button>
-                    <button onClick={() => markNoShow(serving._id)} className="px-4 py-3 rounded-xl bg-orange-100 hover:bg-orange-200 text-orange-800 text-sm font-medium transition">No-show</button>
-                    <button onClick={() => act(serving._id, 'complete', serving.tokenNumber)} className="px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition">Complete</button>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-ink-400">
-                  Nobody at this counter right now — press <b>Call next</b> to serve the next person.
-                </p>
-              )}
-            </div>
           </div>
+
+          {/* Now serving */}
+          <Card className="flex items-center min-h-[220px]">
+            {serving ? (
+              <div className="w-full">
+                <MicroLabel>Now serving</MicroLabel>
+                <p className="text-[64px] leading-none font-bold tracking-[-.04em] text-ink tnum mt-3">
+                  {serving.tokenNumber}
+                </p>
+                <p className="text-[15px] text-muted mt-2">
+                  {serving.department?.name}
+                  {serving.customerName && ` · ${serving.customerName}`}
+                </p>
+                {serving.noShowCount > 0 && (
+                  <p className="text-[13px] text-clay-ink mt-1.5">
+                    {serving.noShowCount} previous no-show{serving.noShowCount > 1 ? 's' : ''}
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-2.5 mt-6">
+                  <button onClick={() => act(serving._id, 'hold', serving.tokenNumber)} className={btn.secondary}>Hold</button>
+                  <button onClick={() => markNoShow(serving._id)} className={btn.danger}>No-show</button>
+                  <button onClick={() => act(serving._id, 'complete', serving.tokenNumber)} className={btn.primary}>Complete</button>
+                </div>
+              </div>
+            ) : (
+              <div className="w-full">
+                <EmptyState
+                  dashed
+                  title="Nobody at this counter right now."
+                  hint={<>Hit <b className="text-ink-2">Call next</b> and the screen out front updates instantly.</>}
+                />
+              </div>
+            )}
+          </Card>
         </div>
 
-        {/* Queue this counter is responsible for */}
-        <div className="bg-white rounded-2xl border border-ink-200/70 shadow-card">
-          <div className="flex items-center justify-between px-6 pt-5 pb-3">
+        {/* Your queue */}
+        <Card pad={false} className="overflow-hidden">
+          <div className="flex items-center justify-between px-6 pt-5 pb-4">
             <div>
-              <h2 className="text-[0.95rem] font-semibold text-ink-800">Your queue</h2>
-              <p className="text-xs text-ink-400 mt-0.5">
-                {me?.departments?.length
-                  ? me.departments.map((d) => d.name).join(' · ')
-                  : `All of ${me?.room?.name || 'this room'}`}
+              <h2 className="text-[17px] font-bold tracking-[-.02em] text-ink">Your queue</h2>
+              <p className="font-mono text-[10px] tracking-[.16em] uppercase text-muted-3 mt-1">
+                {me?.departments?.length ? me.departments.map((d) => d.name).join(' · ') : `all of ${roomName}`}
               </p>
             </div>
-            <span className="text-sm text-ink-400 tnum">{waiting.length} waiting</span>
+            <span className="font-mono text-[13px] text-muted-2 tnum">{waiting.length} waiting</span>
           </div>
+
           {relevant.length === 0 ? (
-            <p className="text-sm text-ink-400 text-center py-10">
-              Nobody waiting. New {t.customerPlural.toLowerCase()} appear here the moment they join.
-            </p>
+            <EmptyState
+              title="Nobody waiting"
+              hint={`New ${t.customerPlural.toLowerCase()} appear here the moment they join.`}
+            />
           ) : (
-            <div className="divide-y divide-ink-100">
-              {relevant.map((x) => (
-                <div key={x._id} className="px-6 py-3.5">
-                  <div className="flex items-center justify-between gap-3">
+            <div className="divide-y divide-line-soft">
+              {relevant.map((x, i) => (
+                <div
+                  key={x._id}
+                  className="px-6 py-4 hover:bg-surface-alt transition-colors animate-rise-fast"
+                  style={{ animationDelay: `${i * 30}ms` }}
+                >
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
                     <div className="flex items-center gap-3 min-w-0 flex-wrap">
-                      <span className="font-semibold text-ink-900 tnum">{x.tokenNumber}</span>
-                      <span className="text-sm text-ink-400 truncate">{x.department?.name}</span>
-                      {x.isPriority && <Badge tone="danger">priority</Badge>}
+                      <span className="font-mono text-[17px] font-semibold text-ink tnum">{x.tokenNumber}</span>
+                      <span className="text-[14px] text-muted-2 truncate">{x.department?.name}</span>
+                      {x.isPriority && <Badge tone="espresso">Priority</Badge>}
                       {x.noShowCount > 0 && (
-                        <Badge tone="orange">{x.noShowCount} no-show{x.noShowCount > 1 ? 's' : ''}</Badge>
+                        <Badge tone="warning">{x.noShowCount} no-show{x.noShowCount > 1 ? 's' : ''}</Badge>
                       )}
                       <Badge tone={STATUS_TONE[x.status]}>{x.status}</Badge>
                     </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <span className="text-sm text-ink-400 tnum">
+                    <div className="flex items-center gap-4 shrink-0">
+                      <span className="font-mono text-[13px] text-muted-3 tnum">
                         {x.predictedEtaSeconds != null ? `~${Math.round(x.predictedEtaSeconds / 60)}m` : '—'}
                       </span>
                       {!x.isPriority && ['waiting', 'held'].includes(x.status) && (
-                        <button onClick={() => setPriorityFor(x)}
-                          className="text-sm font-medium text-ink-500 hover:text-brand-700" title="Grant a priority pass">
-                          Priority
-                        </button>
+                        <button onClick={() => setPriorityFor(x)} className={btn.ghost}>Priority</button>
                       )}
                       {(x.status === 'held' || x.status === 'skipped') && (
-                        <button onClick={() => act(x._id, 'recall', x.tokenNumber)} className="text-sm font-medium text-brand-600 hover:text-brand-700">
-                          Recall
-                        </button>
+                        <button onClick={() => act(x._id, 'recall', x.tokenNumber)} className={btn.ghost}>Recall</button>
                       )}
                     </div>
                   </div>
                   {x.isPriority && x.priorityReason && (
-                    <p className="text-xs text-ink-400 mt-1">Priority: {x.priorityReason}</p>
+                    <p className="text-[12px] text-muted-3 mt-1.5">Priority: {x.priorityReason}</p>
                   )}
                 </div>
               ))}
             </div>
           )}
-        </div>
+        </Card>
       </main>
 
       {priorityFor && (
-        <PriorityDialog
-          token={priorityFor}
-          onConfirm={grantPriority}
-          onCancel={() => setPriorityFor(null)}
-        />
+        <PriorityDialog token={priorityFor} onConfirm={grantPriority} onCancel={() => setPriorityFor(null)} />
       )}
       <Toaster />
     </div>

@@ -4,10 +4,13 @@ import api from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import { toast } from '../store/toastStore';
 import Toaster from '../components/Toaster';
+import Logo from '../components/Logo';
+import { btn, field, MicroLabel } from '../components/ui';
 
 /**
- * Self-serve organization signup — the front door. Creates the org + its first
- * admin and seeds an industry template so the account is usable immediately.
+ * Self-serve organization signup — the front door. Creates the org plus its
+ * first administrator, and seeds an industry template (branch, departments,
+ * rooms and counter logins) so it's usable immediately.
  */
 const INDUSTRIES = [
   ['hospital', 'Hospital / Clinic'],
@@ -26,7 +29,6 @@ export default function Signup() {
   const navigate = useNavigate();
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-  const field = 'w-full px-3.5 py-2.5 rounded-xl border border-ink-200 bg-white text-sm text-ink-800 placeholder-ink-400 transition focus:border-brand-400';
 
   async function submit(e) {
     e.preventDefault();
@@ -34,75 +36,81 @@ export default function Signup() {
     try {
       const { data } = await api.post('/auth/register-org', form);
       login(data);
-      navigate('/');
+      navigate('/branches');
     } catch (err) {
-      toast.error(err.response?.data?.message || err.response?.data?.errors?.[0]?.msg || 'Sign up failed');
+      toast.error(
+        err.response?.data?.message || err.response?.data?.errors?.[0]?.msg || 'Sign up failed'
+      );
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-2 bg-ink-50">
-      {/* Brand panel */}
-      <div className="hidden lg:flex flex-col justify-between bg-gradient-to-b from-brand-700 to-brand-900 text-white p-12">
-        <div className="flex items-center gap-2">
-          <span className="w-8 h-8 rounded-lg bg-white/15 grid place-items-center font-bold">Q</span>
-          <span className="font-semibold text-lg">QueueOS</span>
-        </div>
-        <div>
-          <h1 className="text-[2.1rem] leading-tight font-semibold mb-3 tracking-tight">Set up your queues<br />in minutes.</h1>
-          <p className="text-brand-100/80 max-w-sm">Pick your industry and we'll seed a working setup — services, counters, and a scannable QR — instantly. No integration, no install.</p>
-        </div>
-        <p className="text-brand-100/50 text-sm">Trusted by teams in healthcare, banking, government &amp; retail</p>
-      </div>
+    <div className="relative min-h-screen overflow-hidden flex flex-col items-center justify-center px-6 py-14 bg-paper">
+      <div className="absolute inset-0 paper-grid pointer-events-none" />
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{ background: 'radial-gradient(60% 55% at 50% 40%, #FFFDF8, transparent 70%)' }}
+      />
 
-      {/* Form */}
-      <div className="flex items-center justify-center px-4 py-10">
-        <div className="w-full max-w-md animate-rise">
-          <div className="lg:hidden flex items-center gap-2 mb-8 justify-center">
-            <span className="w-8 h-8 rounded-lg bg-brand-600 text-white grid place-items-center font-bold">Q</span>
-            <span className="font-semibold text-lg text-ink-900">QueueOS</span>
+      <div className="relative w-full max-w-[520px] animate-rise">
+        <div className="flex flex-col items-center gap-3.5 mb-7">
+          <div className="flex items-center gap-3">
+            <Logo size="login" />
+            <div>
+              <div className="text-2xl font-bold tracking-[-.03em] text-ink">QueueOS</div>
+              <div className="font-mono text-[10px] tracking-[.2em] uppercase text-muted-2">
+                the line, run properly
+              </div>
+            </div>
           </div>
-
-          <h2 className="text-2xl font-semibold text-ink-900 tracking-tight mb-1">Start your organization</h2>
-          <p className="text-sm text-ink-500 mb-6">Free to set up. You'll be running queues in a couple of minutes.</p>
-
-          <form onSubmit={submit} className="grid gap-3">
-            <div className="grid gap-1.5">
-              <span className="text-[13px] font-medium text-ink-600">Organization name</span>
-              <input required value={form.orgName} onChange={set('orgName')} className={field} placeholder="e.g. City Health Clinic" />
-            </div>
-            <div className="grid gap-1.5">
-              <span className="text-[13px] font-medium text-ink-600">Industry</span>
-              <select value={form.industry} onChange={set('industry')} className={field}>
-                {INDUSTRIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-            </div>
-            <div className="grid sm:grid-cols-2 gap-3">
-              <div className="grid gap-1.5">
-                <span className="text-[13px] font-medium text-ink-600">Your name</span>
-                <input required value={form.name} onChange={set('name')} className={field} />
-              </div>
-              <div className="grid gap-1.5">
-                <span className="text-[13px] font-medium text-ink-600">Work email</span>
-                <input type="email" required value={form.email} onChange={set('email')} className={field} />
-              </div>
-            </div>
-            <div className="grid gap-1.5">
-              <span className="text-[13px] font-medium text-ink-600">Password</span>
-              <input type="password" required minLength={6} value={form.password} onChange={set('password')} className={field} placeholder="At least 6 characters" />
-            </div>
-
-            <button type="submit" disabled={busy} className="mt-2 w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white font-medium transition shadow-sm active:scale-[.99]">
-              {busy ? 'Creating your workspace…' : 'Create organization'}
-            </button>
-          </form>
-
-          <p className="text-sm text-ink-500 mt-6 text-center">
-            Already have an account? <Link to="/login" className="text-brand-600 hover:underline font-medium">Sign in</Link>
-          </p>
         </div>
+
+        <h1 className="text-[38px] leading-[1.08] font-bold tracking-[-.035em] text-ink text-center mb-3">
+          Open the doors.
+        </h1>
+        <p className="text-[16px] text-muted text-center mb-8 max-w-md mx-auto">
+          Pick your industry and we'll set up a working branch — departments, rooms and counter
+          logins — before you finish your coffee.
+        </p>
+
+        <form onSubmit={submit} className="bg-surface border border-line rounded-[22px] shadow-login p-7 grid gap-4">
+          <label className="grid gap-2">
+            <MicroLabel>Organization name</MicroLabel>
+            <input required value={form.orgName} onChange={set('orgName')} className={field} placeholder="City Health Clinic" />
+          </label>
+          <label className="grid gap-2">
+            <MicroLabel>Industry</MicroLabel>
+            <select value={form.industry} onChange={set('industry')} className={field}>
+              {INDUSTRIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </label>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <label className="grid gap-2">
+              <MicroLabel>Your name</MicroLabel>
+              <input required value={form.name} onChange={set('name')} className={field} />
+            </label>
+            <label className="grid gap-2">
+              <MicroLabel>Work email</MicroLabel>
+              <input type="email" required value={form.email} onChange={set('email')} className={field} />
+            </label>
+          </div>
+          <label className="grid gap-2">
+            <MicroLabel>Password</MicroLabel>
+            <input type="password" required minLength={6} value={form.password} onChange={set('password')}
+              className={field} placeholder="At least 6 characters" />
+          </label>
+
+          <button type="submit" disabled={busy} className={`${btn.primary} w-full py-3.5 mt-1`}>
+            {busy ? 'Setting up your branch…' : 'Create organization →'}
+          </button>
+
+          <p className="text-center text-[14px] text-muted-2 mt-1">
+            Already have an account?{' '}
+            <Link to="/login" className="text-espresso hover:text-clay">Sign in</Link>
+          </p>
+        </form>
       </div>
       <Toaster />
     </div>

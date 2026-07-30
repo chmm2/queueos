@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin:0; padding:0; background:#F4F1E8; }
+  * { box-sizing:border-box; }
+  a { color:#2E2A22; text-decoration:none; font-weight:600; }
+  a:hover { color:#C2603C; }
+  input::placeholder { color:#A79E8E; }
+  ::-webkit-scrollbar { width:10px; height:10px; }
+  ::-webkit-scrollbar-thumb { background:#DAD3C4; border-radius:8px; }
+  @keyframes qFront { 0%,52% { transform:translateX(0); opacity:1;} 72%,100% { transform:translateX(-34px); opacity:0;} }
+  @keyframes qMid { 0%,52% { transform:translateX(0);} 74%,100% { transform:translateX(-24px);} }
+  @keyframes qBack { 0% { transform:translateX(28px); opacity:0;} 22%,52% { transform:translateX(0); opacity:1;} 74%,100% { transform:translateX(-24px); opacity:1;} }
+  @keyframes qBob { 0%,100% { transform:translateY(0);} 50% { transform:translateY(-1.2px);} }
+  @keyframes blink { 0%,100% { opacity:1;} 50% { opacity:.2;} }
+  @keyframes rise { from { opacity:0; transform:translateY(12px);} to { opacity:1; transform:translateY(0);} }
+  @keyframes floaty { 0%,100% { transform:translateY(0);} 50% { transform:translateY(-10px);} }
+  @keyframes grow { from { transform:scaleY(0);} to { transform:scaleY(1);} }
+  @keyframes ripple { 0% { transform:scale(.8); opacity:.5;} 100% { transform:scale(1.5); opacity:0;} }
+  @media (max-width: 1180px) { [data-floater] { display:none !important; } }
+</style>
+</helmet>
+
+<div style="min-height:100vh;background:#F4F1E8;color:#1B1A17;font-family:'Space Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased">
+
+<sc-if value="{{ isLogin }}" hint-placeholder-val="{{ true }}">
+  <div style="position:relative;min-height:100vh;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:56px 24px">
+    <div style="position:absolute;inset:0;background-image:linear-gradient(#E7E1D3 1px, transparent 1px),linear-gradient(90deg,#E7E1D3 1px, transparent 1px);background-size:72px 72px;opacity:.7"></div>
+    <div style="position:absolute;inset:0;background:radial-gradient(60% 55% at 50% 42%, rgba(255,253,248,.95), rgba(244,241,232,0) 70%)"></div>
+
+    <div data-floater="1" style="position:absolute;right:calc(50% + 265px);top:20%;animation:floaty 9s ease-in-out infinite">
+      <div style="background:#FFFDF8;border:1px solid #E5DFD2;border-radius:16px;padding:16px 20px;box-shadow:0 18px 40px rgba(43,38,28,.07);width:210px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#8A8172">Now serving</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:34px;font-weight:600;color:#2E2A22;margin-top:6px">B-042</div>
+        <div style="font-size:12px;color:#8A8172">Billing Desk · Counter 1</div>
+      </div>
+    </div>
+    <div data-floater="1" style="position:absolute;left:calc(50% + 265px);top:26%;animation:floaty 11s ease-in-out infinite reverse">
+      <div style="background:#FFFDF8;border:1px solid #E5DFD2;border-radius:16px;padding:16px 20px;box-shadow:0 18px 40px rgba(43,38,28,.07);width:220px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#8A8172">Avg wait today</div>
+        <div style="font-size:32px;font-weight:700;letter-spacing:-.03em;margin-top:4px">4m 12s <span style="font-size:14px;color:#3F7D5A;font-weight:600">▼ 38%</span></div>
+        <div style="display:flex;align-items:flex-end;gap:4px;height:26px;margin-top:8px">
+          <sc-for list="{{ heroSpark }}" as="h" hint-placeholder-count="12">
+            <div style="{{ h.style }}"></div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+    <div data-floater="1" style="position:absolute;right:calc(50% + 285px);bottom:18%;animation:floaty 13s ease-in-out infinite">
+      <div style="background:#2E2A22;color:#F4F1E8;border-radius:16px;padding:14px 18px;box-shadow:0 18px 40px rgba(46,42,34,.22)">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;opacity:.6">Queue joined</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:20px;margin-top:4px">C-118 · ~9m</div>
+      </div>
+    </div>
+    <div data-floater="1" style="position:absolute;left:calc(50% + 285px);bottom:20%;animation:floaty 10s ease-in-out infinite reverse">
+      <div style="background:#FFFDF8;border:1px solid #E5DFD2;border-radius:14px;padding:12px 16px;box-shadow:0 18px 40px rgba(43,38,28,.07);display:flex;align-items:center;gap:10px">
+        <span style="width:8px;height:8px;border-radius:50%;background:#C2603C;animation:blink 1.6s ease-in-out infinite"></span>
+        <span style="font-size:13px;color:#4A443A">Counter 3 just opened</span>
+      </div>
+    </div>
+
+    <div style="position:relative;width:100%;max-width:460px;animation:rise .5s ease both">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:14px;margin-bottom:26px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="position:relative;width:86px;height:56px;border-radius:18px;background:#2E2A22;display:grid;place-items:center;overflow:hidden;box-shadow:0 12px 28px rgba(46,42,34,.25)">
+            <svg viewBox="0 0 96 44" style="width:76px;height:36px;overflow:visible">
+              <rect x="2" y="20" width="7" height="18" rx="3" fill="#C2603C" opacity=".85"></rect>
+              <g stroke="#C2603C" stroke-width="2.6" stroke-linecap="round" fill="none" style="animation:qFront 3.6s ease-in-out infinite">
+                <circle cx="26" cy="11" r="3.6" fill="#C2603C" stroke="none"></circle>
+                <path d="M26 15 V26 M26 18 L21.5 22.5 M26 18 L30.5 22.5 M26 26 L21.5 34 M26 26 L30.5 34"></path>
+              </g>
+              <g stroke="#F4F1E8" stroke-width="2.6" stroke-linecap="round" fill="none" opacity=".85" style="animation:qMid 3.6s ease-in-out infinite">
+                <circle cx="50" cy="11" r="3.6" fill="#F4F1E8" stroke="none"></circle>
+                <path d="M50 15 V26 M50 18 L45.5 22.5 M50 18 L54.5 22.5 M50 26 L45.5 34 M50 26 L54.5 34"></path>
+              </g>
+              <g stroke="#F4F1E8" stroke-width="2.6" stroke-linecap="round" fill="none" opacity=".6" style="animation:qBack 3.6s ease-in-out infinite">
+                <circle cx="74" cy="11" r="3.6" fill="#F4F1E8" stroke="none"></circle>
+                <path d="M74 15 V26 M74 18 L69.5 22.5 M74 18 L78.5 22.5 M74 26 L69.5 34 M74 26 L78.5 34"></path>
+              </g>
+            </svg>
+          </div>
+          <div>
+            <div style="font-size:24px;font-weight:700;letter-spacing:-.03em">QueueOS</div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#8A8172">the line, run properly</div>
+          </div>
+        </div>
+        <h1 style="margin:8px 0 0;font-size:38px;font-weight:700;letter-spacing:-.035em;text-align:center;line-height:1.1">{{ rotatingLine }}</h1>
+      </div>
+
+      <div style="background:#FFFDF8;border:1px solid #E5DFD2;border-radius:22px;padding:34px;box-shadow:0 30px 70px rgba(43,38,28,.10)">
+        <label style="display:block;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#8A8172;margin-bottom:8px">Email</label>
+        <input type="email" placeholder="admin@queue.com" style="width:100%;padding:14px 16px;border-radius:12px;background:#F7F4EC;border:1px solid #E1DACB;color:#1B1A17;font-size:15px;font-family:'Space Grotesk',sans-serif;outline:none;margin-bottom:18px" style-focus="border-color:#2E2A22;background:#fff" />
+        <label style="display:block;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#8A8172;margin-bottom:8px">Password</label>
+        <input type="password" placeholder="••••••••••" style="width:100%;padding:14px 16px;border-radius:12px;background:#F7F4EC;border:1px solid #E1DACB;color:#1B1A17;font-size:15px;font-family:'Space Grotesk',sans-serif;outline:none;margin-bottom:24px" style-focus="border-color:#2E2A22;background:#fff" />
+        <button onClick="{{ signIn }}" style="width:100%;padding:15px;border-radius:12px;border:none;cursor:pointer;background:#2E2A22;color:#F7F4EC;font-size:16px;font-weight:600;font-family:'Space Grotesk',sans-serif;transition:background .15s ease, transform .15s ease" style-hover="background:#17140F;transform:translateY(-1px)">Open the console →</button>
+        <div style="margin-top:18px;text-align:center;font-size:14px;color:#8A8172">First time here? <a href="#">Start an organization</a></div>
+      </div>
+
+      <div style="display:flex;justify-content:center;gap:22px;margin-top:24px;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#9A9182">
+        <span>{{ tokensToday }} tokens today</span><span>·</span><span>{{ liveBranches }} branches live</span><span>·</span><span>no app installs</span>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isApp }}" hint-placeholder-val="{{ false }}">
+  <div style="display:grid;grid-template-columns:250px minmax(0,1fr);min-height:100vh">
+
+    <aside style="background:#EFEBE0;border-right:1px solid #E1DACB;display:flex;flex-direction:column;position:sticky;top:0;height:100vh">
+      <div style="padding:22px 20px;border-bottom:1px solid #E1DACB;display:flex;align-items:center;gap:12px">
+        <div style="width:58px;height:40px;flex:none;border-radius:12px;background:#2E2A22;display:grid;place-items:center;overflow:hidden">
+          <svg viewBox="0 0 96 44" style="width:50px;height:24px;overflow:visible">
+            <rect x="2" y="20" width="7" height="18" rx="3" fill="#C2603C" opacity=".85"></rect>
+            <g style="animation:qFront 3.6s ease-in-out infinite">
+              <circle cx="26" cy="11" r="3.6" fill="#C2603C"></circle>
+              <path d="M26 15 V26 M26 18 L21.5 22.5 M26 18 L30.5 22.5 M26 26 L21.5 34 M26 26 L30.5 34" stroke="#C2603C" stroke-width="2.6" stroke-linecap="round" fill="none"></path>
+            </g>
+            <g opacity=".85" style="animation:qMid 3.6s ease-in-out infinite">
+              <circle cx="50" cy="11" r="3.6" fill="#F4F1E8"></circle>
+              <path d="M50 15 V26 M50 18 L45.5 22.5 M50 18 L54.5 22.5 M50 26 L45.5 34 M50 26 L54.5 34" stroke="#F4F1E8" stroke-width="2.6" stroke-linecap="round" fill="none"></path>
+            </g>
+            <g opacity=".6" style="animation:qBack 3.6s ease-in-out infinite">
+              <circle cx="74" cy="11" r="3.6" fill="#F4F1E8"></circle>
+              <path d="M74 15 V26 M74 18 L69.5 22.5 M74 18 L78.5 22.5 M74 26 L69.5 34 M74 26 L78.5 34" stroke="#F4F1E8" stroke-width="2.6" stroke-linecap="round" fill="none"></path>
+            </g>
+          </svg>
+        </div>
+        <div>
+          <div style="font-size:17px;font-weight:700;letter-spacing:-.02em">QueueOS</div>
+          <div style="font-size:12px;color:#8A8172">Demo City Clinic</div>
+        </div>
+      </div>
+
+      <nav style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:16px 12px;display:flex;flex-direction:column;gap:3px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#A79E8E;padding:8px 10px">Organization</div>
+        <sc-for list="{{ orgNav }}" as="item" hint-placeholder-count="2">
+          <button onClick="{{ item.go }}" style="{{ item.style }}"><span style="{{ item.dotStyle }}"></span><span>{{ item.label }}</span></button>
+        </sc-for>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#A79E8E;padding:18px 10px 8px">Branch — Main Hospital</div>
+        <sc-for list="{{ branchNav }}" as="item" hint-placeholder-count="5">
+          <button onClick="{{ item.go }}" style="{{ item.style }}"><span style="{{ item.dotStyle }}"></span><span>{{ item.label }}</span></button>
+        </sc-for>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#A79E8E;padding:18px 10px 8px">Live surfaces</div>
+        <sc-for list="{{ liveNav }}" as="item" hint-placeholder-count="2">
+          <button onClick="{{ item.go }}" style="{{ item.style }}"><span style="{{ item.dotStyle }}"></span><span>{{ item.label }}</span></button>
+        </sc-for>
+      </nav>
+
+      <div style="padding:14px 16px;border-top:1px solid #E1DACB;display:flex;align-items:center;gap:12px">
+        <div style="width:34px;height:34px;border-radius:10px;background:#E3DCCB;display:grid;place-items:center;font-size:13px;font-weight:600;color:#2E2A22">AU</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600">Admin User</div>
+          <div style="font-size:11px;color:#8A8172">Administrator</div>
+        </div>
+        <button onClick="{{ signOut }}" style="background:#FFFDF8;border:1px solid #E1DACB;color:#6B6357;border-radius:9px;padding:7px 11px;font-size:12px;cursor:pointer;font-family:'Space Grotesk',sans-serif" style-hover="color:#1B1A17;border-color:#C9C0AD">Exit</button>
+      </div>
+    </aside>
+
+    <main style="min-width:0;background:#F4F1E8">
+      <header style="position:sticky;top:0;z-index:5;backdrop-filter:blur(10px);background:rgba(244,241,232,.85);border-bottom:1px solid #E5DFD2">
+        <div style="max-width:1280px;margin:0 auto;padding:16px 40px;display:flex;align-items:center;justify-content:space-between;gap:20px">
+          <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:#8A8172">
+            <span>Branches</span><span style="color:#CFC7B5">/</span><span style="color:#1B1A17;font-weight:600">Main Hospital</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px">
+            <div style="display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:#EDF3EE;border:1px solid #CFE0D4;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.12em;color:#3F7D5A">
+              <span style="width:6px;height:6px;border-radius:50%;background:#3F7D5A;animation:blink 1.6s ease-in-out infinite"></span>LIVE
+            </div>
+            <div style="font-size:13px;color:#6B6357">admin@queue.com</div>
+          </div>
+        </div>
+      </header>
+
+      <div style="max-width:1280px;margin:0 auto;padding:40px 40px 72px">
+
+        <sc-if value="{{ isBranches }}" hint-placeholder-val="{{ true }}">
+          <div style="animation:rise .4s ease both">
+            <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:30px">
+              <div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#C2603C;margin-bottom:10px">Organization</div>
+                <h1 style="margin:0;font-size:42px;font-weight:700;letter-spacing:-.035em">Every branch, one pulse.</h1>
+                <p style="margin:10px 0 0;color:#6B6357;font-size:16px;max-width:560px">Each location runs its own departments, rooms, counters and staff — and reports back here in real time.</p>
+              </div>
+              <button style="padding:13px 22px;border-radius:12px;border:none;cursor:pointer;background:#2E2A22;color:#F7F4EC;font-weight:600;font-size:15px;font-family:'Space Grotesk',sans-serif" style-hover="background:#17140F">+ Add branch</button>
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:20px">
+              <sc-for list="{{ branches }}" as="b" hint-placeholder-count="3">
+                <div style="position:relative;overflow:hidden;border-radius:20px;background:#FFFDF8;border:1px solid #E5DFD2;padding:24px;display:flex;flex-direction:column;box-shadow:0 2px 0 rgba(43,38,28,.03);transition:transform .18s ease, box-shadow .18s ease" style-hover="transform:translateY(-3px);box-shadow:0 18px 40px rgba(43,38,28,.09)">
+                  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+                    <div>
+                      <div style="font-size:20px;font-weight:700;letter-spacing:-.02em">{{ b.name }}</div>
+                      <div style="font-size:13px;color:#8A8172;margin-top:4px">{{ b.address }}</div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:7px;padding:5px 10px;border-radius:999px;background:#F6EEE9;border:1px solid #EBD8CD;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;color:#C2603C;flex:none">
+                      <span style="width:6px;height:6px;border-radius:50%;background:#C2603C;animation:blink 1.6s ease-in-out infinite"></span>{{ b.waiting }} WAITING
+                    </div>
+                  </div>
+                  <div style="display:flex;align-items:flex-end;gap:4px;height:48px;margin:22px 0 18px">
+                    <sc-for list="{{ b.spark }}" as="h" hint-placeholder-count="12">
+                      <div style="{{ h.style }}"></div>
+                    </sc-for>
+                  </div>
+                  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding-top:18px;border-top:1px solid #EDE7DA">
+                    <sc-for list="{{ b.stats }}" as="s" hint-placeholder-count="4">
+                      <div>
+                        <div style="font-size:22px;font-weight:700;letter-spacing:-.02em">{{ s.value }}</div>
+                        <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#A79E8E;margin-top:2px">{{ s.label }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <button onClick="{{ goOverview }}" style="margin-top:20px;width:100%;padding:12px;border-radius:11px;background:#F2EFE5;border:1px solid #E1DACB;color:#2E2A22;font-weight:600;font-size:14px;cursor:pointer;font-family:'Space Grotesk',sans-serif" style-hover="background:#E9E4D6">Open branch →</button>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isOverview }}" hint-placeholder-val="{{ false }}">
+          <div style="animation:rise .4s ease both">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#C2603C;margin-bottom:10px">Branch control</div>
+            <h1 style="margin:0;font-size:42px;font-weight:700;letter-spacing:-.035em">Main Hospital</h1>
+            <p style="margin:10px 0 30px;color:#6B6357;font-size:16px">Six departments awake. Ten counters listening. Here's the room in one glance.</p>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin-bottom:34px">
+              <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+                <div style="border-radius:18px;background:#FFFDF8;border:1px solid #E5DFD2;padding:22px">
+                  <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8A8172">{{ k.label }}</div>
+                  <div style="display:flex;align-items:baseline;gap:8px;margin-top:10px">
+                    <div style="{{ k.valueStyle }}">{{ k.value }}</div>
+                    <div style="{{ k.deltaStyle }}">{{ k.delta }}</div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#A79E8E;margin-bottom:14px">Configure this branch</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin-bottom:34px">
+              <sc-for list="{{ configCards }}" as="c" hint-placeholder-count="4">
+                <button onClick="{{ c.go }}" style="text-align:left;cursor:pointer;border-radius:18px;background:#FFFDF8;border:1px solid #E5DFD2;padding:22px;display:flex;flex-direction:column;gap:14px;font-family:'Space Grotesk',sans-serif;color:#1B1A17;transition:transform .18s ease, box-shadow .18s ease" style-hover="transform:translateY(-3px);box-shadow:0 16px 36px rgba(43,38,28,.09)">
+                  <div style="{{ c.iconStyle }}">{{ c.glyph }}</div>
+                  <div>
+                    <div style="font-size:17px;font-weight:600;letter-spacing:-.01em">{{ c.title }}</div>
+                    <div style="font-size:13px;color:#8A8172;margin-top:4px;line-height:1.45">{{ c.desc }}</div>
+                  </div>
+                </button>
+              </sc-for>
+            </div>
+
+            <div style="border-radius:20px;background:#FFFDF8;border:1px solid #E5DFD2;padding:28px">
+              <div style="font-size:19px;font-weight:700;letter-spacing:-.02em;margin-bottom:20px">Location settings</div>
+              <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:26px">
+                <input value="Main Hospital" style="padding:14px 16px;border-radius:12px;background:#F7F4EC;border:1px solid #E1DACB;color:#1B1A17;font-size:15px;font-family:'Space Grotesk',sans-serif;outline:none" style-focus="border-color:#2E2A22;background:#fff" />
+                <input placeholder="Street address" style="padding:14px 16px;border-radius:12px;background:#F7F4EC;border:1px solid #E1DACB;color:#1B1A17;font-size:15px;font-family:'Space Grotesk',sans-serif;outline:none" style-focus="border-color:#2E2A22;background:#fff" />
+                <input placeholder="Phone" style="padding:14px 16px;border-radius:12px;background:#F7F4EC;border:1px solid #E1DACB;color:#1B1A17;font-size:15px;font-family:'Space Grotesk',sans-serif;outline:none" style-focus="border-color:#2E2A22;background:#fff" />
+                <input value="UTC" style="padding:14px 16px;border-radius:12px;background:#F7F4EC;border:1px solid #E1DACB;color:#1B1A17;font-size:15px;font-family:'Space Grotesk',sans-serif;outline:none" style-focus="border-color:#2E2A22;background:#fff" />
+              </div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#A79E8E;margin-bottom:12px">Opening hours</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px">
+                <sc-for list="{{ hours }}" as="d" hint-placeholder-count="7">
+                  <div style="{{ d.rowStyle }}">
+                    <div style="width:104px;font-size:14px;font-weight:500">{{ d.day }}</div>
+                    <div style="{{ d.pillStyle }}">{{ d.state }}</div>
+                    <div style="flex:1"></div>
+                    <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#6B6357">{{ d.range }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isDepartments }}" hint-placeholder-val="{{ false }}">
+          <div style="animation:rise .4s ease both">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#C2603C;margin-bottom:10px">Queues</div>
+            <h1 style="margin:0;font-size:42px;font-weight:700;letter-spacing:-.035em">Departments</h1>
+            <p style="margin:10px 0 30px;color:#6B6357;font-size:16px">Every queue this branch offers, with its own token prefix, pace and rules.</p>
+
+            <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:30px">
+              <sc-for list="{{ departments }}" as="d" hint-placeholder-count="6">
+                <div style="display:grid;grid-template-columns:44px minmax(0,1fr) 90px 150px 110px;align-items:center;gap:18px;padding:16px 22px;border-radius:16px;background:#FFFDF8;border:1px solid #E5DFD2;transition:box-shadow .18s ease" style-hover="box-shadow:0 12px 30px rgba(43,38,28,.07)">
+                  <div style="{{ d.avatarStyle }}">{{ d.initial }}</div>
+                  <div style="min-width:0">
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                      <span style="font-size:17px;font-weight:600;letter-spacing:-.01em">{{ d.name }}</span>
+                      <span style="{{ d.tagStyle }}">{{ d.tag }}</span>
+                    </div>
+                    <div style="font-size:13px;color:#8A8172;margin-top:3px">~{{ d.minutes }} min per patient · prefix {{ d.prefix }}</div>
+                  </div>
+                  <div style="text-align:right">
+                    <div style="font-size:20px;font-weight:700">{{ d.waiting }}</div>
+                    <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#A79E8E">waiting</div>
+                  </div>
+                  <div style="height:6px;border-radius:999px;background:#EDE7DA;overflow:hidden">
+                    <div style="{{ d.loadStyle }}"></div>
+                  </div>
+                  <button style="justify-self:end;background:#F7F4EC;border:1px solid #E1DACB;color:#6B6357;border-radius:9px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:'Space Grotesk',sans-serif" style-hover="color:#1B1A17;border-color:#C9C0AD">Archive</button>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="border-radius:20px;background:#FFFDF8;border:1px solid #E5DFD2;padding:26px">
+              <div style="font-size:18px;font-weight:700;letter-spacing:-.02em;margin-bottom:4px">Add a department</div>
+              <div style="font-size:13px;color:#8A8172;margin-bottom:20px">It starts serving the moment you save it.</div>
+              <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:12px;align-items:center">
+                <input placeholder="Name (e.g. Radiology)" style="padding:13px 16px;border-radius:12px;background:#F7F4EC;border:1px solid #E1DACB;color:#1B1A17;font-size:14px;font-family:'Space Grotesk',sans-serif;outline:none" style-focus="border-color:#2E2A22;background:#fff" />
+                <input placeholder="Prefix (R)" style="padding:13px 16px;border-radius:12px;background:#F7F4EC;border:1px solid #E1DACB;color:#1B1A17;font-size:14px;font-family:'IBM Plex Mono',monospace;outline:none" style-focus="border-color:#2E2A22;background:#fff" />
+                <select style="padding:13px 16px;border-radius:12px;background:#F7F4EC;border:1px solid #E1DACB;color:#1B1A17;font-size:14px;font-family:'Space Grotesk',sans-serif;outline:none">
+                  <option>walk-in</option><option>emergency</option><option>appointment</option>
+                </select>
+                <input value="300" style="padding:13px 16px;border-radius:12px;background:#F7F4EC;border:1px solid #E1DACB;color:#1B1A17;font-size:14px;font-family:'IBM Plex Mono',monospace;outline:none" style-focus="border-color:#2E2A22;background:#fff" />
+                <button style="padding:13px 22px;border-radius:12px;border:none;cursor:pointer;background:#2E2A22;color:#F7F4EC;font-weight:600;font-size:14px;font-family:'Space Grotesk',sans-serif;white-space:nowrap" style-hover="background:#17140F">Add department</button>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isRooms }}" hint-placeholder-val="{{ false }}">
+          <div style="animation:rise .4s ease both">
+            <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:30px">
+              <div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#C2603C;margin-bottom:10px">Physical layer</div>
+                <h1 style="margin:0;font-size:42px;font-weight:700;letter-spacing:-.035em">Rooms &amp; Counters</h1>
+                <p style="margin:10px 0 0;color:#6B6357;font-size:16px;max-width:600px">A room is a space with its own screen and QR. A counter is a desk inside it — and every desk is its own login.</p>
+              </div>
+              <button style="padding:13px 22px;border-radius:12px;border:none;cursor:pointer;background:#2E2A22;color:#F7F4EC;font-weight:600;font-size:15px;font-family:'Space Grotesk',sans-serif" style-hover="background:#17140F">+ Add room</button>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:16px">
+              <sc-for list="{{ rooms }}" as="r" hint-placeholder-count="3">
+                <div style="border-radius:20px;background:#FFFDF8;border:1px solid #E5DFD2;overflow:hidden">
+                  <div style="display:flex;align-items:center;gap:14px;padding:18px 24px;background:#F7F4EC;border-bottom:1px solid #E5DFD2;flex-wrap:wrap">
+                    <div style="font-size:19px;font-weight:700;letter-spacing:-.02em">{{ r.name }}</div>
+                    <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.08em;padding:4px 9px;border-radius:7px;background:#E9E4D6;color:#2E2A22">{{ r.code }}</span>
+                    <span style="font-size:13px;color:#8A8172">serves {{ r.dept }}</span>
+                    <div style="flex:1"></div>
+                    <button onClick="{{ goDisplays }}" style="background:#FFFDF8;border:1px solid #E1DACB;color:#6B6357;border-radius:9px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:'Space Grotesk',sans-serif" style-hover="color:#1B1A17;border-color:#C9C0AD">Display &amp; QR</button>
+                    <button style="background:#FFFDF8;border:1px solid #EBD8CD;color:#B04E2E;border-radius:9px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:'Space Grotesk',sans-serif" style-hover="border-color:#C2603C">Remove</button>
+                  </div>
+                  <div style="padding:18px 24px 22px">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+                      <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#A79E8E">Counters ({{ r.count }})</div>
+                      <button style="background:none;border:none;color:#2E2A22;font-size:13px;font-weight:600;cursor:pointer;font-family:'Space Grotesk',sans-serif">+ Add counter</button>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px">
+                      <sc-for list="{{ r.counters }}" as="c" hint-placeholder-count="3">
+                        <div style="border-radius:14px;background:#F9F6EF;border:1px solid #E5DFD2;padding:16px">
+                          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                            <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;padding:4px 8px;border-radius:6px;background:#EDE7DA;color:#4A443A">{{ c.id }}</span>
+                            <span style="font-size:15px;font-weight:600">{{ c.name }}</span>
+                            <span style="{{ c.statusStyle }}">{{ c.status }}</span>
+                          </div>
+                          <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#A79E8E;margin-top:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.email }}</div>
+                          <div style="display:flex;align-items:center;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid #EDE7DA">
+                            <span style="font-size:12px;color:#8A8172">All depts in room</span>
+                            <div style="flex:1"></div>
+                            <button style="background:none;border:none;color:#2E2A22;font-size:12px;font-weight:600;cursor:pointer;font-family:'Space Grotesk',sans-serif">Reset password</button>
+                          </div>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isAnalytics }}" hint-placeholder-val="{{ false }}">
+          <div style="animation:rise .4s ease both">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#C2603C;margin-bottom:10px">Last 24 hours</div>
+            <h1 style="margin:0;font-size:42px;font-weight:700;letter-spacing:-.035em">The day, measured.</h1>
+            <p style="margin:10px 0 30px;color:#6B6357;font-size:16px">Performance for Main Hospital, refreshed every 30 seconds.</p>
+
+            <div style="border-radius:20px;background:#2E2A22;color:#F4F1E8;padding:26px;margin-bottom:20px">
+              <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                <div style="font-size:19px;font-weight:700;letter-spacing:-.02em">Smart ETA</div>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;padding:5px 10px;border-radius:999px;background:rgba(244,241,232,.14);color:#F0C48A">Learning</span>
+                <div style="flex:1"></div>
+                <button style="padding:11px 18px;border-radius:11px;background:#F4F1E8;border:none;color:#2E2A22;font-weight:600;font-size:14px;cursor:pointer;font-family:'Space Grotesk',sans-serif">Train now</button>
+              </div>
+              <p style="margin:12px 0 20px;color:rgba(244,241,232,.72);font-size:15px;max-width:660px">Until the model has your real rhythm, wait times come from a transparent estimate built on your own service durations.</p>
+              <div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:11px;color:rgba(244,241,232,.6);margin-bottom:8px">
+                <span>{{ etaCollected }} real visits collected</span><span>activates at 120</span>
+              </div>
+              <div style="height:8px;border-radius:999px;background:rgba(244,241,232,.16);overflow:hidden">
+                <div style="{{ etaBarStyle }}"></div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin-bottom:20px">
+              <sc-for list="{{ analyticsKpis }}" as="k" hint-placeholder-count="4">
+                <div style="border-radius:18px;background:#FFFDF8;border:1px solid #E5DFD2;padding:22px">
+                  <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8A8172">{{ k.label }}</div>
+                  <div style="{{ k.valueStyle }}">{{ k.value }}</div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:20px">
+              <div style="border-radius:20px;background:#FFFDF8;border:1px solid #E5DFD2;padding:26px">
+                <div style="font-size:17px;font-weight:700;letter-spacing:-.02em;margin-bottom:22px">Tokens issued by hour</div>
+                <div style="display:flex;align-items:flex-end;gap:10px;height:210px">
+                  <sc-for list="{{ hourBars }}" as="h" hint-placeholder-count="10">
+                    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:10px;height:100%;justify-content:flex-end">
+                      <div style="{{ h.barStyle }}"></div>
+                      <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#A79E8E">{{ h.label }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="border-radius:20px;background:#FFFDF8;border:1px solid #E5DFD2;padding:26px">
+                <div style="font-size:17px;font-weight:700;letter-spacing:-.02em;margin-bottom:22px">Outcomes</div>
+                <div style="display:flex;flex-direction:column;gap:18px">
+                  <sc-for list="{{ outcomes }}" as="o" hint-placeholder-count="3">
+                    <div>
+                      <div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:8px">
+                        <span style="color:#6B6357">{{ o.label }}</span><span style="font-weight:700">{{ o.value }}</span>
+                      </div>
+                      <div style="height:8px;border-radius:999px;background:#EDE7DA;overflow:hidden">
+                        <div style="{{ o.barStyle }}"></div>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isDisplays }}" hint-placeholder-val="{{ false }}">
+          <div style="animation:rise .4s ease both">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#C2603C;margin-bottom:10px">Public surfaces</div>
+            <h1 style="margin:0;font-size:42px;font-weight:700;letter-spacing:-.035em">Displays &amp; QR</h1>
+            <p style="margin:10px 0 30px;color:#6B6357;font-size:16px">Every room gets a screen worth looking at and a code worth scanning.</p>
+
+            <div style="border-radius:18px;background:#FFFDF8;border:1px solid #E5DFD2;padding:22px;margin-bottom:20px">
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#A79E8E;margin-bottom:14px">Choose a room</div>
+              <div style="display:flex;flex-wrap:wrap;gap:10px">
+                <sc-for list="{{ roomChips }}" as="c" hint-placeholder-count="6">
+                  <button onClick="{{ c.select }}" style="{{ c.style }}">{{ c.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1.3fr;gap:20px;align-items:start">
+              <div style="border-radius:20px;background:#FFFDF8;border:1px solid #E5DFD2;padding:26px;text-align:center">
+                <div style="font-size:17px;font-weight:700;letter-spacing:-.02em">Join QR — {{ selectedRoom }}</div>
+                <div style="font-size:13px;color:#8A8172;margin:8px 0 20px">Print it, stick it at the entrance. One scan joins this room's queue.</div>
+                <div style="position:relative;display:inline-block;padding:16px;border-radius:18px;background:#fff;border:1px solid #E5DFD2">
+                  <div style="width:186px;height:186px;background-image:repeating-conic-gradient(#1B1A17 0% 25%, #fff 0% 50%);background-size:16px 16px;border-radius:4px"></div>
+                  <div style="position:absolute;inset:0;display:grid;place-items:center;pointer-events:none">
+                    <div style="width:58px;height:44px;border-radius:13px;background:#2E2A22;display:grid;place-items:center;box-shadow:0 0 0 6px #fff">
+                      <svg viewBox="18 0 62 44" style="width:44px;height:26px">
+                        <circle cx="26" cy="11" r="3.6" fill="#C2603C"></circle>
+                        <path d="M26 15 V26 M26 18 L21.5 22.5 M26 18 L30.5 22.5 M26 26 L21.5 34 M26 26 L30.5 34" stroke="#C2603C" stroke-width="2.6" stroke-linecap="round" fill="none"></path>
+                        <circle cx="50" cy="11" r="3.6" fill="#F4F1E8" opacity=".85"></circle>
+                        <path d="M50 15 V26 M50 18 L45.5 22.5 M50 18 L54.5 22.5 M50 26 L45.5 34 M50 26 L54.5 34" stroke="#F4F1E8" stroke-width="2.6" stroke-linecap="round" fill="none" opacity=".85"></path>
+                        <circle cx="74" cy="11" r="3.6" fill="#F4F1E8" opacity=".6"></circle>
+                        <path d="M74 15 V26 M74 18 L69.5 22.5 M74 18 L78.5 22.5 M74 26 L69.5 34 M74 26 L78.5 34" stroke="#F4F1E8" stroke-width="2.6" stroke-linecap="round" fill="none" opacity=".6"></path>
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#A79E8E;margin-top:16px">Rotates every 45s — screenshots go stale</div>
+                <a href="#" style="display:inline-block;margin-top:8px;font-size:14px">Open the join page ↗</a>
+              </div>
+
+              <div style="border-radius:20px;background:#FFFDF8;border:1px solid #E5DFD2;padding:26px">
+                <div style="font-size:17px;font-weight:700;letter-spacing:-.02em">Waiting screen — {{ selectedRoom }}</div>
+                <div style="font-size:13px;color:#8A8172;margin:8px 0 20px">Throw this on the TV. It reads well from across the room.</div>
+                <div style="border-radius:16px;background:#1B1A17;padding:34px 28px;min-height:268px;display:flex;flex-direction:column;justify-content:center;align-items:center">
+                  <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:rgba(244,241,232,.5)">{{ selectedRoom }}</div>
+                  <div style="font-size:86px;font-weight:700;letter-spacing:-.04em;color:#F0C48A;line-height:1;margin:14px 0 6px">{{ nowServing }}</div>
+                  <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:rgba(244,241,232,.45)">now serving</div>
+                  <div style="display:flex;gap:10px;margin-top:24px">
+                    <sc-for list="{{ upNext }}" as="t" hint-placeholder-count="3">
+                      <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;padding:7px 12px;border-radius:9px;background:rgba(244,241,232,.08);color:rgba(244,241,232,.7)">{{ t.token }}</div>
+                    </sc-for>
+                  </div>
+                </div>
+                <button onClick="{{ goBoard }}" style="margin-top:18px;width:100%;padding:14px;border-radius:12px;border:none;cursor:pointer;background:#2E2A22;color:#F7F4EC;font-weight:600;font-size:15px;font-family:'Space Grotesk',sans-serif" style-hover="background:#17140F">Open this screen full-size ↗</button>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isCounter }}" hint-placeholder-val="{{ false }}">
+          <div style="animation:rise .4s ease both">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;flex-wrap:wrap">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;padding:6px 10px;border-radius:8px;background:#E9E4D6;color:#2E2A22">DCC-MH-BILL-01</span>
+              <span style="display:flex;align-items:center;gap:7px;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;padding:6px 12px;border-radius:999px;background:#EDF3EE;border:1px solid #CFE0D4;color:#3F7D5A"><span style="width:6px;height:6px;border-radius:50%;background:#3F7D5A;animation:blink 1.6s ease-in-out infinite"></span>counter open</span>
+              <div style="flex:1"></div>
+              <button style="padding:10px 16px;border-radius:10px;background:#F6EEE9;border:1px solid #EBD8CD;color:#B04E2E;font-weight:600;font-size:14px;cursor:pointer;font-family:'Space Grotesk',sans-serif">Close counter</button>
+            </div>
+
+            <h1 style="margin:0;font-size:42px;font-weight:700;letter-spacing:-.035em">Billing Desk</h1>
+            <p style="margin:10px 0 28px;color:#6B6357;font-size:16px">One button. The rest of the room takes care of itself.</p>
+
+            <div style="display:grid;grid-template-columns:1fr 1.6fr;gap:20px;margin-bottom:20px">
+              <button style="position:relative;overflow:hidden;border-radius:22px;border:none;cursor:pointer;background:#2E2A22;color:#F7F4EC;padding:42px 28px;font-family:'Space Grotesk',sans-serif;transition:transform .15s ease" style-hover="transform:translateY(-2px)">
+                <span style="position:absolute;inset:0;border-radius:22px;border:2px solid rgba(244,241,232,.35);animation:ripple 2.4s ease-out infinite"></span>
+                <span style="position:relative;display:block;font-size:30px;font-weight:700;letter-spacing:-.02em">Call next</span>
+                <span style="position:relative;display:block;margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:rgba(244,241,232,.7)">{{ waitingCount }} waiting</span>
+              </button>
+              <div style="border-radius:22px;background:#FFFDF8;border:1px dashed #DDD5C4;display:grid;place-items:center;padding:34px;text-align:center">
+                <div>
+                  <div style="font-size:17px;color:#4A443A">Nobody at this counter right now.</div>
+                  <div style="font-size:14px;color:#8A8172;margin-top:6px">Hit <strong style="color:#2E2A22">Call next</strong> and the screen out front updates instantly.</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="border-radius:20px;background:#FFFDF8;border:1px solid #E5DFD2;padding:24px">
+              <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:18px">
+                <div style="font-size:18px;font-weight:700;letter-spacing:-.02em">Your queue</div>
+                <div style="font-size:13px;color:#8A8172">All of Billing Desk</div>
+                <div style="flex:1"></div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#8A8172">{{ waitingCount }} waiting</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <sc-for list="{{ queue }}" as="q" hint-placeholder-count="4">
+                  <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:14px;background:#F9F6EF;border:1px solid #EDE7DA;flex-wrap:wrap">
+                    <span style="font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:600">{{ q.token }}</span>
+                    <span style="font-size:14px;color:#8A8172">{{ q.dept }}</span>
+                    <span style="{{ q.flagStyle }}">{{ q.flag }}</span>
+                    <div style="flex:1"></div>
+                    <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#6B6357">~{{ q.eta }}</span>
+                    <span style="{{ q.priorityStyle }}">{{ q.priority }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+      </div>
+    </main>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isBoard }}" hint-placeholder-val="{{ false }}">
+  <div style="min-height:100vh;background:#1B1A17;color:#F4F1E8;position:relative;padding:52px 64px;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;padding-bottom:24px;border-bottom:1px solid rgba(244,241,232,.14)">
+      <div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;letter-spacing:.34em;text-transform:uppercase;color:rgba(244,241,232,.45)">Now serving</div>
+        <div style="font-size:62px;font-weight:700;letter-spacing:-.04em;line-height:1.05;margin-top:8px">Billing Desk</div>
+        <div style="font-size:20px;color:rgba(244,241,232,.5)">Main Hospital</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:50px;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums">{{ clock }}</div>
+        <div style="display:flex;align-items:center;gap:9px;justify-content:flex-end;margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:13px;letter-spacing:.2em;color:#8FBF9F"><span style="width:8px;height:8px;border-radius:50%;background:#8FBF9F;animation:blink 1.6s ease-in-out infinite"></span>LIVE</div>
+      </div>
+    </div>
+
+    <div style="flex:1;display:grid;grid-template-columns:1.6fr 1fr;gap:28px;padding-top:32px">
+      <div style="border-radius:26px;background:rgba(244,241,232,.05);border:1px solid rgba(244,241,232,.12);padding:44px;display:flex;flex-direction:column;justify-content:center">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:14px;letter-spacing:.28em;text-transform:uppercase;color:rgba(244,241,232,.45)">Billing</div>
+        <div style="font-size:170px;font-weight:700;line-height:.95;letter-spacing:-.05em;color:#F0C48A;margin:16px 0">{{ nowServing }}</div>
+        <div style="font-size:26px;color:rgba(244,241,232,.6)">Please proceed to <strong style="color:#fff">Counter 1</strong></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;letter-spacing:.28em;text-transform:uppercase;color:rgba(244,241,232,.4)">Up next</div>
+        <sc-for list="{{ upNext }}" as="t" hint-placeholder-count="4">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:22px 26px;border-radius:18px;background:rgba(244,241,232,.05);border:1px solid rgba(244,241,232,.1)">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:34px;font-weight:600">{{ t.token }}</span>
+            <span style="font-size:18px;color:rgba(244,241,232,.5)">~{{ t.eta }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;padding-top:24px;margin-top:18px;border-top:1px solid rgba(244,241,232,.1)">
+      <div style="font-size:19px;color:rgba(244,241,232,.55)">Scan the code at the entrance — keep your place from your seat.</div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;letter-spacing:.28em;text-transform:uppercase;color:rgba(244,241,232,.25)">Powered by QueueOS</div>
+    </div>
+
+    <button onClick="{{ goDisplays }}" style="position:absolute;top:18px;right:22px;padding:9px 14px;border-radius:10px;background:rgba(244,241,232,.1);border:1px solid rgba(244,241,232,.2);color:#F4F1E8;font-size:13px;cursor:pointer;font-family:'Space Grotesk',sans-serif">← Back to console</button>
+  </div>
+</sc-if>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+const NAV_BASE = "display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:11px 12px;border-radius:11px;border:1px solid transparent;background:none;color:#6B6357;font-size:14px;font-weight:500;font-family:'Space Grotesk',sans-serif;cursor:pointer;transition:background .15s ease,color .15s ease;min-width:0;overflow:hidden;white-space:nowrap";
+const NAV_ON = "display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:11px 12px;border-radius:11px;border:1px solid #E1DACB;background:#FFFDF8;color:#1B1A17;font-size:14px;font-weight:600;font-family:'Space Grotesk',sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(43,38,28,.05);min-width:0;overflow:hidden;white-space:nowrap";
+
+const LINES = [
+  "Take the desk.",
+  "The line moves again.",
+  "Nobody likes waiting. Fix the waiting.",
+  "Ten counters. One console."
+];
+
+class Component extends DCLogic {
+  state = { screen: "login", room: "Billing Desk", line: 0, clock: "" };
+
+  componentDidMount() {
+    this.tick();
+    this._c = setInterval(() => this.tick(), 1000);
+    this._l = setInterval(() => this.setState(s => ({ line: (s.line + 1) % LINES.length })), 4200);
+  }
+  componentWillUnmount() { clearInterval(this._c); clearInterval(this._l); }
+  tick() {
+    const d = new Date();
+    let h = d.getHours(); const ap = h >= 12 ? "PM" : "AM"; h = h % 12 || 12;
+    this.setState({ clock: h + ":" + String(d.getMinutes()).padStart(2, "0") + " " + ap });
+  }
+  go(screen) { return () => this.setState({ screen }); }
+
+  navItem(id, label, dotColor) {
+    const on = this.state.screen === id;
+    return {
+      label, go: this.go(id),
+      style: on ? NAV_ON : NAV_BASE,
+      dotStyle: "width:7px;height:7px;border-radius:2px;flex:none;background:" + (on ? dotColor : "#CFC7B5")
+    };
+  }
+
+  renderVals() {
+    const s = this.state.screen;
+    const spark = (seed, small) => Array.from({ length: 14 }, (_, i) => {
+      const h = 18 + Math.abs(Math.sin(seed + i * 0.9)) * 82;
+      return { style: "flex:1;border-radius:3px;background:" + (i > 10 ? "#C2603C" : "#DCCFB8") + ";height:" + h.toFixed(0) + "%" };
+    });
+
+    const kpi = (label, value, delta, good, accent) => ({
+      label, value, delta,
+      valueStyle: "font-size:38px;font-weight:700;letter-spacing:-.035em;color:" + accent,
+      deltaStyle: "font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;color:" + (good ? "#3F7D5A" : "#B04E2E")
+    });
+
+    const hoursRow = (day, open, range) => ({
+      day, range: open ? range : "—",
+      state: open ? "open" : "closed",
+      rowStyle: "display:flex;align-items:center;gap:14px;padding:12px 16px;border-radius:12px;background:" + (open ? "#F9F6EF" : "#F4F1E8") + ";border:1px solid #EDE7DA",
+      pillStyle: "font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;padding:4px 10px;border-radius:999px;" + (open
+        ? "background:#EDF3EE;border:1px solid #CFE0D4;color:#3F7D5A"
+        : "background:#EFEBE0;border:1px solid #E1DACB;color:#A79E8E")
+    });
+
+    const dept = (name, prefix, tag, minutes, waiting, load) => ({
+      name, prefix, tag, minutes, waiting, initial: name[0],
+      avatarStyle: "width:44px;height:44px;border-radius:13px;display:grid;place-items:center;font-size:17px;font-weight:700;color:#2E2A22;background:#F3ECE0;border:1px solid #E6DCC9",
+      tagStyle: "font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:4px 9px;border-radius:999px;" + (tag === "emergency"
+        ? "background:#F6EEE9;border:1px solid #EBD8CD;color:#B04E2E"
+        : "background:#F2EFE5;border:1px solid #E1DACB;color:#7A7266"),
+      loadStyle: "height:100%;width:" + load + "%;border-radius:999px;background:" + (load > 70 ? "#C2603C" : "#2E2A22")
+    });
+
+    const counter = (id, name, open) => ({
+      id, name, status: open ? "open" : "closed",
+      email: id.toLowerCase() + "@demo-city-clinic.queueos.app",
+      statusStyle: "font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:3px 9px;border-radius:999px;" + (open
+        ? "background:#EDF3EE;border:1px solid #CFE0D4;color:#3F7D5A"
+        : "background:#F2EFE5;border:1px solid #E1DACB;color:#A79E8E")
+    });
+
+    const rooms = [
+      { name: "Billing Desk", code: "BILL", dept: "Billing", counters: [counter("DCC-MH-BILL-01", "Counter 1", true)] },
+      { name: "Consultation Wing", code: "CON", dept: "Consultation", counters: [counter("DCC-MH-CON-01", "Counter 1", true), counter("DCC-MH-CON-02", "Counter 2", false), counter("DCC-MH-CON-03", "Counter 3", true)] },
+      { name: "Diagnostics", code: "DIAG", dept: "Lab", counters: [counter("DCC-MH-DIAG-01", "Counter 1", false), counter("DCC-MH-DIAG-02", "Counter 2", false), counter("DCC-MH-DIAG-03", "Counter 3", true)] }
+    ].map(r => Object.assign({}, r, { count: r.counters.length }));
+
+    const roomNames = ["Billing Desk", "Consultation Wing", "Diagnostics", "Emergency", "Pharmacy", "Registration", "Whole branch"];
+    const bars = [[9, 4], [10, 7], [11, 9], [12, 6], [13, 3], [14, 8], [15, 11], [16, 9], [17, 12], [18, 7]];
+    const iconBase = "width:44px;height:44px;border-radius:13px;display:grid;place-items:center;font-size:19px;";
+
+    return {
+      isLogin: s === "login",
+      isApp: s !== "login" && s !== "board",
+      isBoard: s === "board",
+      isBranches: s === "branches",
+      isOverview: s === "overview",
+      isDepartments: s === "departments",
+      isRooms: s === "rooms",
+      isAnalytics: s === "analytics",
+      isDisplays: s === "displays",
+      isCounter: s === "counter",
+
+      signIn: this.go("branches"),
+      signOut: this.go("login"),
+      goOverview: this.go("overview"),
+      goDisplays: this.go("displays"),
+      goBoard: this.go("board"),
+
+      rotatingLine: LINES[this.state.line],
+      liveBranches: 4,
+      tokensToday: "1,284",
+      clock: this.state.clock,
+      heroSpark: spark(3),
+
+      orgNav: [this.navItem("branches", "Branches", "#2E2A22"), this.navItem("admins", "Administrators", "#2E2A22")],
+      branchNav: [
+        this.navItem("overview", "Overview", "#2E2A22"),
+        this.navItem("departments", "Departments", "#2E2A22"),
+        this.navItem("rooms", "Rooms & Counters", "#2E2A22"),
+        this.navItem("analytics", "Analytics", "#2E2A22"),
+        this.navItem("displays", "Displays & QR", "#2E2A22")
+      ],
+      liveNav: [this.navItem("board", "Waiting screen", "#C2603C"), this.navItem("counter", "Counter desk", "#C2603C")],
+
+      branches: [
+        { name: "Main Hospital", address: "12 Harbour Road · UTC", waiting: 1, spark: spark(1), stats: [{ value: "6", label: "Depts" }, { value: "6", label: "Rooms" }, { value: "10", label: "Counters" }, { value: "14", label: "Staff" }] },
+        { name: "Northside Annex", address: "88 Ridgeway Ave · UTC+1", waiting: 7, spark: spark(4), stats: [{ value: "4", label: "Depts" }, { value: "4", label: "Rooms" }, { value: "6", label: "Counters" }, { value: "9", label: "Staff" }] },
+        { name: "Riverside Clinic", address: "3 Mill Lane · UTC", waiting: 3, spark: spark(9), stats: [{ value: "3", label: "Depts" }, { value: "3", label: "Rooms" }, { value: "4", label: "Counters" }, { value: "6", label: "Staff" }] }
+      ],
+
+      kpis: [
+        kpi("Waiting now", "1", "▼ 62%", true, "#1B1A17"),
+        kpi("Being served", "0", "idle", true, "#1B1A17"),
+        kpi("Avg wait (24h)", "2m", "▼ 40s", true, "#2E2A22"),
+        kpi("No-show rate", "0%", "steady", true, "#C2603C")
+      ],
+
+      configCards: [
+        { title: "Departments", desc: "The queues this branch offers", glyph: "≡", go: this.go("departments"), iconStyle: iconBase + "color:#2E2A22;background:#F3ECE0;border:1px solid #E6DCC9" },
+        { title: "Rooms & Counters", desc: "Physical spaces and the desk logins inside them", glyph: "▤", go: this.go("rooms"), iconStyle: iconBase + "color:#2E2A22;background:#F3ECE0;border:1px solid #E6DCC9" },
+        { title: "Displays & QR", desc: "A screen and join code per room", glyph: "▢", go: this.go("displays"), iconStyle: iconBase + "color:#B04E2E;background:#F6EEE9;border:1px solid #EBD8CD" },
+        { title: "Analytics", desc: "Wait times, volume and no-shows", glyph: "◧", go: this.go("analytics"), iconStyle: iconBase + "color:#B04E2E;background:#F6EEE9;border:1px solid #EBD8CD" }
+      ],
+
+      hours: [
+        hoursRow("Monday", true, "09:00 — 17:00"), hoursRow("Tuesday", true, "09:00 — 17:00"),
+        hoursRow("Wednesday", true, "09:00 — 17:00"), hoursRow("Thursday", true, "09:00 — 17:00"),
+        hoursRow("Friday", true, "09:00 — 17:00"), hoursRow("Saturday", false, ""),
+        hoursRow("Sunday", false, ""), hoursRow("Public holidays", false, "")
+      ],
+
+      departments: [
+        dept("Billing", "B", "walk-in", 3, 1, 22),
+        dept("Consultation", "C", "walk-in", 10, 6, 78),
+        dept("Emergency", "E", "emergency", 5, 2, 44),
+        dept("Lab", "L", "walk-in", 5, 0, 8),
+        dept("Pharmacy", "P", "walk-in", 4, 3, 52),
+        dept("Registration", "R", "walk-in", 3, 1, 18)
+      ],
+
+      rooms,
+      roomChips: roomNames.map(n => ({
+        label: n, select: () => this.setState({ room: n }),
+        style: this.state.room === n
+          ? "padding:10px 16px;border-radius:999px;border:1px solid #2E2A22;background:#2E2A22;color:#F7F4EC;font-size:14px;font-weight:600;cursor:pointer;font-family:'Space Grotesk',sans-serif"
+          : "padding:10px 16px;border-radius:999px;border:1px solid #E1DACB;background:#F7F4EC;color:#6B6357;font-size:14px;cursor:pointer;font-family:'Space Grotesk',sans-serif"
+      })),
+      selectedRoom: this.state.room,
+      nowServing: "B-042",
+      upNext: [{ token: "B-043", eta: "3m" }, { token: "B-044", eta: "6m" }, { token: "C-118", eta: "9m" }],
+
+      etaCollected: 3,
+      etaBarStyle: "height:100%;width:14%;border-radius:999px;background:#F0C48A",
+      analyticsKpis: [
+        { label: "Total issued", value: "76", valueStyle: "font-size:38px;font-weight:700;letter-spacing:-.035em;margin-top:8px;color:#1B1A17" },
+        { label: "Avg wait", value: "2m", valueStyle: "font-size:38px;font-weight:700;letter-spacing:-.035em;margin-top:8px;color:#2E2A22" },
+        { label: "Avg service", value: "6m", valueStyle: "font-size:38px;font-weight:700;letter-spacing:-.035em;margin-top:8px;color:#1B1A17" },
+        { label: "No-show rate", value: "4%", valueStyle: "font-size:38px;font-weight:700;letter-spacing:-.035em;margin-top:8px;color:#3F7D5A" }
+      ],
+      hourBars: bars.map(([h, v]) => ({
+        label: h + ":00",
+        barStyle: "width:100%;border-radius:7px 7px 3px 3px;background:#2E2A22;transform-origin:bottom;animation:grow .6s cubic-bezier(.2,.8,.2,1) both;height:" + Math.round((v / 12) * 100) + "%"
+      })),
+      outcomes: [
+        { label: "Completed", value: "68", barStyle: "height:100%;width:89%;border-radius:999px;background:#3F7D5A" },
+        { label: "Missed", value: "5", barStyle: "height:100%;width:7%;border-radius:999px;background:#D8A24A" },
+        { label: "Cancelled", value: "3", barStyle: "height:100%;width:4%;border-radius:999px;background:#C2603C" }
+      ],
+
+      waitingCount: 4,
+      queue: [
+        { token: "B-042", dept: "Billing", flag: "1 no-show", eta: "0m", priority: "Priority" },
+        { token: "B-043", dept: "Billing", flag: "", eta: "3m", priority: "" },
+        { token: "B-044", dept: "Billing", flag: "", eta: "6m", priority: "" },
+        { token: "C-118", dept: "Consultation", flag: "transferred", eta: "9m", priority: "" }
+      ].map(q => Object.assign({}, q, {
+        flagStyle: q.flag ? "font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:4px 9px;border-radius:999px;background:#FBF2E4;border:1px solid #EDDCBE;color:#98701F" : "display:none",
+        priorityStyle: q.priority ? "font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;background:#F3ECE0;border:1px solid #E6DCC9;color:#2E2A22" : "display:none"
+      }))
+    };
+  }
+}
+
+</script>
+</body>
+</html>

@@ -1,14 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useBranchStore } from '../../store/branchStore';
 import { toast } from '../../store/toastStore';
-import { PageHeader, Card, SectionTitle, EmptyState, btn, field } from '../../components/ui';
+import {
+  PageHeader, Card, SectionTitle, EmptyState, Badge, MicroLabel, Sparkline, btn, field,
+} from '../../components/ui';
 
 /**
- * Organization level: the list of locations. Everything operational —
- * departments, rooms, counters, staff — lives inside a branch, so this page is
- * the doorway into each one.
+ * Organization level: every location, with a live pulse for each. Departments,
+ * rooms, counters and staff all live inside a branch, so this is the doorway.
  */
 const TZ = [
   'UTC', 'America/New_York', 'America/Chicago', 'America/Los_Angeles',
@@ -21,6 +22,23 @@ export default function Branches() {
   const [form, setForm] = useState({ name: '', address: '', timezone: 'UTC' });
   const [busy, setBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [pulse, setPulse] = useState({}); // branchId -> { waiting, series }
+
+  // A light live read per branch so each card shows a real pulse.
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all(
+      branches.map((b) =>
+        api.get(`/tokens/branch/${b._id}`)
+          .then(({ data }) => [b._id, data.tokens.filter((t) => t.status === 'waiting').length])
+          .catch(() => [b._id, 0])
+      )
+    ).then((rows) => {
+      if (cancelled) return;
+      setPulse(Object.fromEntries(rows.map(([id, waiting]) => [id, waiting])));
+    });
+    return () => { cancelled = true; };
+  }, [branches]);
 
   async function reload() {
     const { data } = await api.get('/branches');
@@ -44,30 +62,29 @@ export default function Branches() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto animate-rise">
+    <div>
       <PageHeader
-        title="Branches"
-        description="Each location runs its own departments, rooms, counters and staff."
+        eyebrow="Organization"
+        title="Every branch, one pulse."
+        description="Each location runs its own departments, rooms and counters — all visible from here."
         actions={
           <button className={btn.primary} onClick={() => setShowForm((s) => !s)}>
-            {showForm ? 'Cancel' : 'Add branch'}
+            {showForm ? 'Cancel' : '+ Add branch'}
           </button>
         }
       />
 
       {showForm && (
-        <Card className="mb-6">
+        <Card className="mb-6 animate-rise-fast">
           <SectionTitle>New branch</SectionTitle>
-          <form onSubmit={create} className="grid gap-3">
-            <div className="grid sm:grid-cols-2 gap-3">
+          <form onSubmit={create} className="grid gap-4">
+            <div className="grid sm:grid-cols-2 gap-4">
               <input required placeholder="Branch name (e.g. Downtown Clinic)" value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })} className={field} />
-              <input placeholder="Address" value={form.address}
+              <input placeholder="Street address" value={form.address}
                 onChange={(e) => setForm({ ...form, address: e.target.value })} className={field} />
-              <label className="grid gap-1.5 sm:col-span-2">
-                <span className="text-[13px] font-medium text-ink-600">
-                  Timezone — daily token numbers reset at this location's midnight
-                </span>
+              <label className="grid gap-2 sm:col-span-2">
+                <MicroLabel>Timezone — daily token numbers reset at this location's midnight</MicroLabel>
                 <select value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} className={field}>
                   {TZ.map((tz) => <option key={tz}>{tz}</option>)}
                 </select>
@@ -81,27 +98,40 @@ export default function Branches() {
       {branches.length === 0 ? (
         <Card><EmptyState title="No branches yet" hint="Add your first location to start configuring queues." /></Card>
       ) : (
-        <div className="grid sm:grid-cols-2 gap-4">
-          {branches.map((b) => (
-            <Link key={b._id} to={`/branches/${b._id}`} className="group">
-              <Card className="h-full transition group-hover:shadow-card-hover group-hover:border-brand-200">
+        <div className="grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(310px, 1fr))' }}>
+          {branches.map((b, i) => {
+            const waiting = pulse[b._id] ?? 0;
+            // A gentle shape for the card sparkline, ending on the live figure.
+            const series = [5, 8, 6, 11, 9, 13, 10, 8, 12, 7, 9, Math.max(2, waiting), Math.max(3, waiting + 1), Math.max(1, waiting)];
+            return (
+              <Card key={b._id} hover className="flex flex-col animate-rise" style={{ animationDelay: `${i * 50}ms` }}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="font-semibold text-ink-900 truncate">{b.name}</p>
-                    <p className="text-xs text-ink-400 mt-0.5 truncate">{b.address || 'No address'}</p>
-                    <p className="text-xs text-ink-400">{b.timezone}</p>
+                    <p className="text-[19px] font-bold tracking-[-.02em] text-ink truncate">{b.name}</p>
+                    <p className="text-[13px] text-muted-2 mt-1 truncate">{b.address || 'No address set'}</p>
                   </div>
-                  <span className="text-brand-600 text-sm shrink-0">Open →</span>
+                  <Badge tone="clay" dot className="shrink-0 font-mono tracking-[.08em]">
+                    {waiting} WAITING
+                  </Badge>
                 </div>
-                <div className="grid grid-cols-4 gap-2 mt-4 pt-4 border-t border-ink-100">
+
+                <div className="my-5">
+                  <Sparkline values={series} height={48} />
+                </div>
+
+                <div className="grid grid-cols-4 gap-2 pt-4 border-t border-line-soft">
                   <Count label="Depts" value={b.counts?.departments} />
                   <Count label="Rooms" value={b.counts?.rooms} />
                   <Count label="Counters" value={b.counts?.counters} />
                   <Count label="Staff" value={b.counts?.staff} />
                 </div>
+
+                <Link to={`/branches/${b._id}`} className={`${btn.secondary} w-full mt-5`}>
+                  Open branch →
+                </Link>
               </Card>
-            </Link>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -111,8 +141,8 @@ export default function Branches() {
 function Count({ label, value }) {
   return (
     <div>
-      <p className="text-lg font-semibold text-ink-900 tnum">{value ?? 0}</p>
-      <p className="text-[11px] text-ink-400 uppercase tracking-wider">{label}</p>
+      <p className="text-[19px] font-bold text-ink tnum leading-none">{value ?? 0}</p>
+      <MicroLabel className="mt-1.5">{label}</MicroLabel>
     </div>
   );
 }

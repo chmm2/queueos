@@ -2,17 +2,17 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../../api/client';
 import { toast } from '../../store/toastStore';
-import { PageHeader, Card, SectionTitle, Badge, EmptyState, btn, field } from '../../components/ui';
+import {
+  PageHeader, Card, SectionTitle, Badge, EmptyState, MicroLabel, btn, field,
+} from '../../components/ui';
 
 /**
  * Rooms & Counters — the physical layout of a branch.
  *
  * A Room is a space (Registration, Pharmacy) that owns a display and a QR.
  * A Counter is a desk inside it — and also a LOGIN: creating one hands back an
- * email + password for the machine at that desk.
+ * email + password for the machine at that desk, shown exactly once.
  */
-const STATUS_TONE = { open: 'success', paused: 'warning', closed: 'neutral' };
-
 export default function Rooms() {
   const { branchId } = useParams();
   const [rooms, setRooms] = useState([]);
@@ -55,47 +55,47 @@ export default function Rooms() {
     }
   }
 
-  const toggleDept = (id) =>
+  const toggle = (id) =>
     setForm((f) => ({
       ...f,
       departments: f.departments.includes(id) ? f.departments.filter((x) => x !== id) : [...f.departments, id],
     }));
 
   return (
-    <div className="max-w-4xl mx-auto animate-rise">
+    <div>
       <PageHeader
-        title="Rooms & Counters"
-        description="Each room is a physical space with its own display and QR. Counters are the desks inside it — and each one is its own login."
-        actions={<button className={btn.primary} onClick={() => setShowNew((s) => !s)}>{showNew ? 'Cancel' : 'Add room'}</button>}
+        eyebrow="Branch control"
+        title="The floor, mapped."
+        description="Each room is a physical space with its own screen and QR. Counters are the desks inside it — and each one is its own login."
+        actions={
+          <button className={btn.primary} onClick={() => setShowNew((s) => !s)}>
+            {showNew ? 'Cancel' : '+ Add room'}
+          </button>
+        }
       />
 
       {showNew && (
-        <Card className="mb-6">
+        <Card className="mb-6 animate-rise-fast">
           <SectionTitle>New room</SectionTitle>
-          <form onSubmit={createRoom} className="grid gap-3">
-            <div className="grid sm:grid-cols-3 gap-3">
-              <input required placeholder="Room name (e.g. Registration)" value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })} className={`${field} sm:col-span-2`} />
-              <input maxLength={6} placeholder="Short code (REG)" value={form.code}
-                onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} className={field} />
+          <form onSubmit={createRoom} className="grid gap-4">
+            <div className="grid sm:grid-cols-3 gap-4">
+              <label className="grid gap-2 sm:col-span-2">
+                <MicroLabel>Room name</MicroLabel>
+                <input required placeholder="Registration" value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })} className={field} />
+              </label>
+              <label className="grid gap-2">
+                <MicroLabel>Short code</MicroLabel>
+                <input maxLength={6} placeholder="REG" value={form.code}
+                  onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} className={`${field} font-mono`} />
+              </label>
             </div>
             {departments.length > 0 && (
               <div>
-                <p className="text-[13px] font-medium text-ink-600 mb-2">
-                  Departments served here <span className="text-ink-400 font-normal">— optional, you can set this later</span>
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {departments.map((d) => (
-                    <button key={d._id} type="button" onClick={() => toggleDept(d._id)}
-                      className={`px-3 py-1.5 rounded-full text-sm border transition ${
-                        form.departments.includes(d._id)
-                          ? 'bg-brand-50 border-brand-300 text-brand-700 font-medium'
-                          : 'border-ink-200 text-ink-600 hover:border-ink-300'
-                      }`}>
-                      {d.name}
-                    </button>
-                  ))}
-                </div>
+                <MicroLabel className="mb-2.5">
+                  Departments served here — optional, you can set this later
+                </MicroLabel>
+                <ChipRow items={departments} selected={form.departments} onToggle={toggle} />
               </div>
             )}
             <div><button className={btn.primary}>Create room</button></div>
@@ -107,13 +107,14 @@ export default function Rooms() {
         <Card><EmptyState title="No rooms yet" hint="Add a room to give a physical space its own queue display and QR code." /></Card>
       )}
 
-      <div className="space-y-4">
-        {rooms.map((room) => (
+      <div className="space-y-5">
+        {rooms.map((room, i) => (
           <RoomCard
             key={room._id}
             room={room}
             allDepartments={departments}
             branchId={branchId}
+            index={i}
             onChange={reload}
             onRemove={() => removeRoom(room._id, room.name)}
           />
@@ -123,13 +124,37 @@ export default function Rooms() {
   );
 }
 
-/** One room: its departments (editable) and the counters inside it. */
-function RoomCard({ room, allDepartments, branchId, onChange, onRemove }) {
-  const [editingDepts, setEditingDepts] = useState(false);
+/** Selectable department chips, used for both rooms and counters. */
+function ChipRow({ items, selected, onToggle }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map((d) => {
+        const on = selected.includes(d._id);
+        return (
+          <button
+            key={d._id}
+            type="button"
+            onClick={() => onToggle(d._id)}
+            className={`px-3.5 py-1.5 rounded-pill text-[13px] font-semibold border transition-colors ${
+              on
+                ? 'bg-espresso border-espresso text-paper'
+                : 'bg-surface border-line-input text-muted hover:border-line-strong hover:text-ink'
+            }`}
+          >
+            {d.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function RoomCard({ room, allDepartments, branchId, index, onChange, onRemove }) {
+  const [editing, setEditing] = useState(false);
   const [picked, setPicked] = useState((room.departments || []).map((d) => d._id));
   const [adding, setAdding] = useState(false);
   const [newCounter, setNewCounter] = useState({ name: '', departments: [] });
-  const [credentials, setCredentials] = useState(null); // shown once after create/reset
+  const [credentials, setCredentials] = useState(null);
 
   const roomDepts = room.departments || [];
 
@@ -137,7 +162,7 @@ function RoomCard({ room, allDepartments, branchId, onChange, onRemove }) {
     try {
       await api.patch(`/rooms/${room._id}`, { departments: picked });
       toast.success('Room departments updated');
-      setEditingDepts(false);
+      setEditing(false);
       onChange();
     } catch (e) {
       toast.error(e.response?.data?.message || 'Could not update');
@@ -177,83 +202,89 @@ function RoomCard({ room, allDepartments, branchId, onChange, onRemove }) {
   }
 
   return (
-    <Card pad={false}>
-      {/* Room header */}
-      <div className="flex flex-wrap items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-ink-100">
-        <div className="min-w-0">
-          <p className="font-semibold text-ink-900 flex items-center gap-2">
-            {room.name}
-            {room.code && <Badge tone="neutral">{room.code}</Badge>}
-          </p>
-          {!editingDepts ? (
-            <p className="text-xs text-ink-400 mt-1">
-              {roomDepts.length ? roomDepts.map((d) => d.name).join(' · ') : 'No departments yet'}
-              <button onClick={() => { setPicked(roomDepts.map((d) => d._id)); setEditingDepts(true); }}
-                className="ml-2 text-brand-600 hover:text-brand-700 font-medium">Edit</button>
-            </p>
-          ) : (
-            <div className="mt-2">
-              <div className="flex flex-wrap gap-2 mb-2">
-                {allDepartments.map((d) => (
-                  <button key={d._id} type="button"
-                    onClick={() => setPicked((p) => (p.includes(d._id) ? p.filter((x) => x !== d._id) : [...p, d._id]))}
-                    className={`px-3 py-1.5 rounded-full text-sm border transition ${
-                      picked.includes(d._id) ? 'bg-brand-50 border-brand-300 text-brand-700 font-medium' : 'border-ink-200 text-ink-600'
-                    }`}>
-                    {d.name}
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <button onClick={saveDepts} className={btn.primary}>Save</button>
-                <button onClick={() => setEditingDepts(false)} className={btn.secondary}>Cancel</button>
-              </div>
-            </div>
-          )}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Link to={`/branches/${branchId}/displays?room=${room._id}`} className={btn.ghost}>Display &amp; QR</Link>
-          <button onClick={onRemove} className="text-sm text-ink-400 hover:text-red-600 px-2">Remove</button>
+    <Card pad={false} className="overflow-hidden animate-rise" style={{ animationDelay: `${index * 60}ms` }}>
+      {/* Room header strip */}
+      <div className="flex flex-wrap items-center gap-3 px-6 py-4 bg-surface-sunken border-b border-line">
+        <p className="text-[17px] font-bold tracking-[-.02em] text-ink">{room.name}</p>
+        {room.code && (
+          <span className="font-mono text-[11px] px-2 py-0.5 rounded-[6px] bg-espresso-tint border border-espresso-tint-border text-espresso">
+            {room.code}
+          </span>
+        )}
+        <span className="text-[13px] text-muted-2 truncate">
+          serves {roomDepts.length ? roomDepts.map((d) => d.name).join(', ') : 'nothing yet'}
+        </span>
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          <Link to={`/branches/${branchId}/displays?room=${room._id}`} className={btn.secondary}>
+            Display &amp; QR
+          </Link>
+          <button onClick={onRemove} className={btn.danger}>Remove</button>
         </div>
       </div>
 
-      {/* Credentials banner — the only time a password is readable */}
+      {/* Departments served, editable inline */}
+      <div className="px-6 pt-4">
+        {!editing ? (
+          <button
+            onClick={() => { setPicked(roomDepts.map((d) => d._id)); setEditing(true); }}
+            className={btn.ghost}
+          >
+            Edit departments served
+          </button>
+        ) : (
+          <div className="pb-2">
+            <ChipRow
+              items={allDepartments}
+              selected={picked}
+              onToggle={(id) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))}
+            />
+            <div className="flex gap-2 mt-3">
+              <button onClick={saveDepts} className={btn.primary}>Save</button>
+              <button onClick={() => setEditing(false)} className={btn.secondary}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Credentials — the only time a password is readable */}
       {credentials && (
-        <div className="mx-6 mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-          <p className="text-sm font-semibold text-emerald-800">
+        <div className="mx-6 mt-4 rounded-tile border border-success-tint-border bg-success-tint p-5">
+          <p className="text-[14px] font-bold text-success">
             Sign-in details for {credentials.code} — copy these now
           </p>
-          <p className="text-xs text-emerald-700 mt-0.5 mb-3">
+          <p className="text-[13px] text-success/80 mt-1 mb-3.5">
             This password is shown once. Give it to the team who'll use that machine.
           </p>
-          <div className="grid sm:grid-cols-2 gap-2 font-mono text-[13px]">
-            <div className="bg-white rounded-lg px-3 py-2 border border-emerald-200 break-all">{credentials.email}</div>
-            <div className="bg-white rounded-lg px-3 py-2 border border-emerald-200">{credentials.password}</div>
+          <div className="grid sm:grid-cols-2 gap-2.5 font-mono text-[13px]">
+            <div className="bg-surface rounded-[10px] px-3.5 py-2.5 border border-success-tint-border break-all">
+              {credentials.email}
+            </div>
+            <div className="bg-surface rounded-[10px] px-3.5 py-2.5 border border-success-tint-border">
+              {credentials.password}
+            </div>
           </div>
-          <button onClick={() => setCredentials(null)} className="text-xs text-emerald-700 hover:text-emerald-900 mt-3 font-medium">
+          <button onClick={() => setCredentials(null)} className="text-[12px] font-semibold text-success hover:underline mt-3.5">
             I've saved these — dismiss
           </button>
         </div>
       )}
 
       {/* Counters */}
-      <div className="px-6 py-4">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-[13px] font-semibold text-ink-700">
-            Counters <span className="text-ink-400 font-normal">({room.counters?.length || 0})</span>
-          </p>
-          <button onClick={() => setAdding((a) => !a)} className="text-sm font-medium text-brand-600 hover:text-brand-700">
+      <div className="px-6 py-5">
+        <div className="flex items-center justify-between mb-4">
+          <MicroLabel>Counters ({room.counters?.length || 0})</MicroLabel>
+          <button onClick={() => setAdding((a) => !a)} className={btn.ghost}>
             {adding ? 'Cancel' : '+ Add counter'}
           </button>
         </div>
 
         {(room.counters || []).length === 0 && !adding && (
-          <p className="text-sm text-ink-400 py-2">No counters here yet — add one to create a desk login.</p>
+          <p className="text-[14px] text-muted-2 py-2">No counters here yet — add one to create a desk login.</p>
         )}
 
-        <div className="space-y-2">
+        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
           {(room.counters || []).map((c) => (
-            <CounterRow
+            <CounterTile
               key={c._id}
               counter={c}
               roomDepts={roomDepts}
@@ -265,33 +296,32 @@ function RoomCard({ room, allDepartments, branchId, onChange, onRemove }) {
         </div>
 
         {adding && (
-          <form onSubmit={addCounter} className="mt-3 border border-ink-200 rounded-xl p-4 grid gap-3 bg-ink-50/50">
-            <input placeholder="Counter name (optional — defaults to Counter N)" value={newCounter.name}
-              onChange={(e) => setNewCounter({ ...newCounter, name: e.target.value })} className={field} />
+          <form onSubmit={addCounter} className="mt-4 border border-line-input rounded-tile p-5 grid gap-4 bg-surface-alt">
+            <label className="grid gap-2">
+              <MicroLabel>Counter name — optional</MicroLabel>
+              <input placeholder="Defaults to Counter N" value={newCounter.name}
+                onChange={(e) => setNewCounter({ ...newCounter, name: e.target.value })} className={field} />
+            </label>
             {roomDepts.length > 0 ? (
               <div>
-                <p className="text-xs text-ink-500 mb-2">
-                  Which of this room's departments does it handle? Leave empty for all of them.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {roomDepts.map((d) => (
-                    <button key={d._id} type="button"
-                      onClick={() => setNewCounter((n) => ({
-                        ...n,
-                        departments: n.departments.includes(d._id)
-                          ? n.departments.filter((x) => x !== d._id)
-                          : [...n.departments, d._id],
-                      }))}
-                      className={`px-3 py-1.5 rounded-full text-sm border transition ${
-                        newCounter.departments.includes(d._id) ? 'bg-brand-50 border-brand-300 text-brand-700' : 'border-ink-200 text-ink-600'
-                      }`}>
-                      {d.name}
-                    </button>
-                  ))}
-                </div>
+                <MicroLabel className="mb-2.5">
+                  Which of this room's departments? Leave empty for all of them
+                </MicroLabel>
+                <ChipRow
+                  items={roomDepts}
+                  selected={newCounter.departments}
+                  onToggle={(id) =>
+                    setNewCounter((n) => ({
+                      ...n,
+                      departments: n.departments.includes(id)
+                        ? n.departments.filter((x) => x !== id)
+                        : [...n.departments, id],
+                    }))
+                  }
+                />
               </div>
             ) : (
-              <p className="text-xs text-amber-700">
+              <p className="text-[13px] text-clay-ink">
                 This room has no departments yet — the counter will serve nothing until you add some above.
               </p>
             )}
@@ -303,8 +333,7 @@ function RoomCard({ room, allDepartments, branchId, onChange, onRemove }) {
   );
 }
 
-/** One counter row, with inline editing of which departments it handles. */
-function CounterRow({ counter: c, roomDepts, onChange, onReset, onRemove }) {
+function CounterTile({ counter: c, roomDepts, onChange, onReset, onRemove }) {
   const [editing, setEditing] = useState(false);
   const [picked, setPicked] = useState((c.departments || []).map((d) => d._id || d));
 
@@ -320,46 +349,42 @@ function CounterRow({ counter: c, roomDepts, onChange, onReset, onRemove }) {
   }
 
   return (
-    <div className="border border-ink-100 rounded-xl px-4 py-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="font-medium text-ink-900 flex items-center gap-2 flex-wrap">
-            <span className="font-mono text-[13px] bg-ink-100 rounded px-1.5 py-0.5">{c.code}</span>
-            {c.name}
-            <Badge tone={STATUS_TONE[c.status]}>{c.status}</Badge>
-          </p>
-          <p className="text-xs text-ink-400 mt-0.5 break-all">{c.email}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button onClick={onReset} className="px-2.5 py-1.5 rounded-lg hover:bg-ink-100 text-ink-500 text-sm">Reset password</button>
-          <button onClick={onRemove} className="text-sm text-ink-400 hover:text-red-600 px-1">✕</button>
-        </div>
+    <div className="rounded-tile border border-line bg-surface-alt p-4">
+      <div className="flex items-center gap-2 flex-wrap mb-2">
+        <span className="font-mono text-[11px] px-2 py-0.5 rounded-[6px] bg-espresso text-paper">
+          {c.code}
+        </span>
+        <span className="text-[14px] font-semibold text-ink">{c.name}</span>
+        <Badge tone={c.status === 'open' ? 'success' : c.status === 'paused' ? 'warning' : 'neutral'}>
+          {c.status}
+        </Badge>
       </div>
+      <p className="font-mono text-[11px] text-muted-3 truncate" title={c.email}>{c.email}</p>
 
-      <div className="mt-2">
+      <div className="mt-3 pt-3 border-t border-line-soft">
         {!editing ? (
-          <p className="text-xs text-ink-500">
-            Handles: {c.departments?.length ? c.departments.map((d) => d.name).join(', ') : 'all departments in this room'}
-            {roomDepts.length > 0 && (
-              <button onClick={() => { setPicked((c.departments || []).map((d) => d._id || d)); setEditing(true); }}
-                className="ml-2 text-brand-600 hover:text-brand-700 font-medium">Change</button>
-            )}
-          </p>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[12px] text-muted-2 truncate">
+              {c.departments?.length ? c.departments.map((d) => d.name).join(', ') : 'All depts in room'}
+            </span>
+            <div className="flex items-center gap-2 shrink-0">
+              {roomDepts.length > 0 && (
+                <button onClick={() => { setPicked((c.departments || []).map((d) => d._id || d)); setEditing(true); }}
+                  className="text-[12px] font-semibold text-muted hover:text-clay">Change</button>
+              )}
+              <button onClick={onReset} className="text-[12px] font-semibold text-muted hover:text-clay">Reset password</button>
+              <button onClick={onRemove} className="text-[12px] text-muted-3 hover:text-clay">✕</button>
+            </div>
+          </div>
         ) : (
           <div>
-            <div className="flex flex-wrap gap-2 my-2">
-              {roomDepts.map((d) => (
-                <button key={d._id} type="button"
-                  onClick={() => setPicked((p) => (p.includes(d._id) ? p.filter((x) => x !== d._id) : [...p, d._id]))}
-                  className={`px-3 py-1.5 rounded-full text-sm border transition ${
-                    picked.includes(d._id) ? 'bg-brand-50 border-brand-300 text-brand-700' : 'border-ink-200 text-ink-600'
-                  }`}>
-                  {d.name}
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-ink-400 mb-2">Select none to handle everything in this room.</p>
-            <div className="flex gap-2">
+            <ChipRow
+              items={roomDepts}
+              selected={picked}
+              onToggle={(id) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))}
+            />
+            <p className="text-[11px] text-muted-3 mt-2">Select none to handle everything in this room.</p>
+            <div className="flex gap-2 mt-3">
               <button onClick={save} className={btn.primary}>Save</button>
               <button onClick={() => setEditing(false)} className={btn.secondary}>Cancel</button>
             </div>

@@ -3,12 +3,11 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import publicApi from '../../api/publicClient';
 
 /**
- * Public wall-display board — the screen in a waiting area. Scopeable so each
- * physical area has its OWN screen:
- *   /board/:branchId               -> whole branch
+ * The waiting-room screen — a public TV surface with no app chrome. Scopeable
+ * so each physical area gets its own:
+ *   /board/:branchId                 -> whole branch
  *   /board/:branchId?room=<id>       -> just that room (e.g. Pharmacy)
  *   /board/:branchId?department=<id> -> a single department
- * Dark, high-contrast, large type — built for TVs.
  */
 export default function Board() {
   const { branchId } = useParams();
@@ -39,58 +38,113 @@ export default function Board() {
     return () => { clearInterval(poll); clearInterval(clock); };
   }, [load]);
 
-  const shell = 'min-h-screen bg-[#0c0d13] text-slate-100 font-sans px-[4vw] py-[4vh] flex flex-col';
+  const shell =
+    "min-h-screen bg-board-bg text-paper font-sans flex flex-col";
 
   if (err || !data) {
-    return <div className={`${shell} items-center justify-center`}><p className="text-[2vw] text-slate-500">{err || 'Loading…'}</p></div>;
+    return (
+      <div className={`${shell} items-center justify-center`}>
+        <p className="text-[2vw] text-paper/40">{err || 'Loading…'}</p>
+      </div>
+    );
   }
 
-  const time = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  const title = data.area || data.branch.name; // e.g. "Pharmacy" or the branch
+  const title = data.area || data.branch.name;
+  const serving = data.departments.flatMap((d) =>
+    d.nowServing.map((n) => ({ ...n, department: d.department }))
+  );
+  const current = serving[0];
+  const upNext = data.departments
+    .filter((d) => d.waiting > 0)
+    .map((d) => ({ department: d.department, waiting: d.waiting }));
 
   return (
-    <div className={shell}>
+    <div className={shell} style={{ padding: '52px 64px' }}>
       {/* Header */}
-      <div className="flex items-end justify-between border-b border-white/10 pb-[2.5vh] mb-[3.5vh]">
-        <div>
-          <p className="text-[1vw] font-semibold uppercase tracking-[0.25em] text-slate-500 mb-[0.8vh]">Now serving</p>
-          <h1 className="text-[3vw] leading-none font-bold tracking-tight">{title}</h1>
-          {data.area && <p className="text-[1.1vw] text-slate-500 mt-[1vh]">{data.branch.name}</p>}
+      <div className="flex items-end justify-between gap-8 pb-9 border-b border-paper/10">
+        <div className="min-w-0">
+          <p className="font-mono text-[13px] tracking-[.34em] uppercase text-paper/40 mb-3">
+            Now serving
+          </p>
+          <h1 className="text-[62px] leading-none font-bold tracking-[-.035em] truncate">{title}</h1>
+          {data.area && <p className="text-[18px] text-paper/40 mt-3">{data.branch.name}</p>}
         </div>
-        <div className="text-right">
-          <p className="text-[2.4vw] leading-none font-semibold tnum">{time}</p>
-          <p className="text-[0.9vw] text-emerald-400 font-semibold tracking-widest uppercase mt-[1vh] flex items-center justify-end gap-2">
-            <span className="w-[0.6vw] h-[0.6vw] rounded-full bg-emerald-400 animate-pulse-soft" /> Live
+        <div className="text-right shrink-0">
+          <p className="text-[50px] leading-none font-semibold tnum">
+            {now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+          </p>
+          <p className="font-mono text-[12px] tracking-[.24em] uppercase text-success mt-3 flex items-center justify-end gap-2">
+            <span className="w-2 h-2 rounded-full bg-success animate-blink" /> Live
           </p>
         </div>
       </div>
 
-      {/* One panel per department in scope */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-[1.6vw] flex-1 content-start">
-        {data.departments.length === 0 && <p className="text-[1.4vw] text-slate-500">No departments configured for this area.</p>}
-        {data.departments.map((s) => (
-          <div key={s.department} className="rounded-[1.2vw] border border-white/10 bg-white/[0.03] p-[1.8vw]">
-            <div className="flex items-center justify-between mb-[1.6vh]">
-              <p className="text-[1.4vw] font-semibold">{s.department}</p>
-              <p className="text-[1vw] text-slate-400"><span className="text-slate-200 font-bold tnum">{s.waiting}</span> waiting</p>
+      {/* Body */}
+      <div className="flex-1 grid gap-10 py-10" style={{ gridTemplateColumns: 'minmax(0,1.6fr) minmax(0,1fr)' }}>
+        <div className="rounded-[28px] bg-paper/[0.04] border border-paper/10 flex flex-col items-center justify-center px-10 py-12">
+          {current ? (
+            <>
+              <p className="text-[170px] leading-[.9] font-bold tracking-[-.05em] text-board-amber tnum">
+                {current.tokenNumber}
+              </p>
+              <p className="text-[26px] text-paper/70 mt-8 text-center">
+                Please proceed to <span className="font-bold text-paper">{current.counter}</span>
+              </p>
+              <p className="font-mono text-[13px] tracking-[.2em] uppercase text-paper/35 mt-3">
+                {current.department}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-[170px] leading-[.9] font-bold tracking-[-.05em] text-paper/10 tnum">···</p>
+              <p className="text-[22px] text-paper/40 mt-8">No one is being served right now.</p>
+            </>
+          )}
+        </div>
+
+        <div className="flex flex-col">
+          <p className="font-mono text-[13px] tracking-[.28em] uppercase text-paper/40 mb-6">Up next</p>
+          {upNext.length === 0 ? (
+            <p className="text-[18px] text-paper/30">Nobody waiting.</p>
+          ) : (
+            <div className="space-y-5">
+              {upNext.map((d) => (
+                <div key={d.department} className="flex items-baseline justify-between gap-4 pb-4 border-b border-paper/10">
+                  <span className="text-[22px] text-paper/75 truncate">{d.department}</span>
+                  <span className="font-mono text-[34px] font-semibold text-paper tnum shrink-0">
+                    {d.waiting}
+                  </span>
+                </div>
+              ))}
             </div>
-            {s.nowServing.length === 0 ? (
-              <p className="text-[3vw] font-bold text-slate-700 tnum">···</p>
-            ) : (
-              <div className="flex flex-wrap gap-x-[2.5vw] gap-y-[1.2vh]">
-                {s.nowServing.map((n, i) => (
-                  <div key={i}>
-                    <p className="text-[3.4vw] leading-none font-bold text-amber-300 tnum">{n.tokenNumber}</p>
-                    {n.counter && <p className="text-[0.9vw] text-slate-400 mt-[0.6vh]">{n.counter}</p>}
-                  </div>
+          )}
+          {serving.length > 1 && (
+            <div className="mt-8">
+              <p className="font-mono text-[11px] tracking-[.24em] uppercase text-paper/30 mb-3">
+                Also serving
+              </p>
+              <div className="flex flex-wrap gap-2.5">
+                {serving.slice(1).map((s, i) => (
+                  <span key={i} className="font-mono text-[20px] px-3 py-1.5 rounded-[10px] bg-paper/[0.07] text-board-amber tnum">
+                    {s.tokenNumber}
+                    <span className="text-paper/35 text-[13px] ml-2">{s.counter}</span>
+                  </span>
                 ))}
               </div>
-            )}
-          </div>
-        ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      <p className="text-right text-[0.85vw] text-slate-600 uppercase tracking-[0.2em] mt-[3vh]">Powered by QueueOS</p>
+      {/* Footer */}
+      <div className="flex items-center justify-between gap-6 pt-7 border-t border-paper/10">
+        <p className="text-[16px] text-paper/40">
+          Scan the code at the entrance — keep your place from your seat.
+        </p>
+        <p className="font-mono text-[11px] tracking-[.28em] uppercase text-paper/25">
+          Powered by QueueOS
+        </p>
+      </div>
     </div>
   );
 }

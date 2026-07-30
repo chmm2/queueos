@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import publicApi from '../../api/publicClient';
+import Logo from '../../components/Logo';
 
 /**
- * The customer join flow — the public face of the product, opened by scanning
- * the QR on a room's wall. Because the QR is scoped to that room, the customer
- * only ever sees the departments served there (and skips the picker entirely
- * when the room handles just one).
+ * The customer join flow — opened by scanning the QR on a room's wall. Because
+ * the QR is scoped to that room, the customer only sees the departments served
+ * there, and the picker disappears entirely when the room handles just one.
  */
 export default function Join() {
   const { branchId } = useParams();
@@ -35,13 +35,10 @@ export default function Join() {
       .get(`/branch/${branchId}/config?${q.toString()}`)
       .then(({ data }) => {
         setConfig(data);
-        // If this room handles exactly one department, pre-select it.
         if (data.departments.length === 1) setDepartmentId(data.departments[0]._id);
       })
-      .catch(() => setFatal('This location could not be found. Please re-scan the QR code at the venue.'));
+      .catch(() => setFatal('This location could not be found. Please re-scan the code at the venue.'));
   }, [branchId, roomId, departmentParam]);
-
-  const accent = config?.organization?.brandColor || '#4f52e0';
 
   async function requestOtp() {
     setError('');
@@ -67,22 +64,16 @@ export default function Join() {
 
   async function submit(e) {
     e.preventDefault();
-    if (!departmentId) return setError('Please choose a service.');
+    if (!departmentId) return setError('Please choose what you need first.');
     setError('');
     setSubmitting(true);
     try {
       const geo = config?.policy?.requireGeofence ? await getGeo() : undefined;
       const { data } = await publicApi.post('/join', {
-        branchId,
-        departmentId,
-        roomId,
-        qrToken,
-        customerName: name,
-        customerPhone: phone,
-        otp: otp || undefined,
-        geo,
+        branchId, departmentId, roomId, qrToken,
+        customerName: name, customerPhone: phone,
+        otp: otp || undefined, geo,
       });
-      // Session + starting position: the tracking page uses these.
       localStorage.setItem(`qtoken:${data.tokenId}`, data.sessionToken);
       localStorage.setItem(`qtoken:${data.tokenId}:startpos`, String(data.position));
       navigate(`/t/${data.tokenId}`);
@@ -96,9 +87,9 @@ export default function Join() {
   if (fatal) {
     return (
       <Shell>
-        <div className="bg-white rounded-2xl shadow-card border border-ink-200/70 p-8 text-center animate-rise">
-          <p className="text-ink-700 font-medium">Location not found</p>
-          <p className="text-sm text-ink-500 mt-2">{fatal}</p>
+        <div className="bg-surface border border-line rounded-[22px] shadow-card p-8 text-center animate-rise">
+          <p className="font-semibold text-ink">Location not found</p>
+          <p className="text-[14px] text-muted mt-2">{fatal}</p>
         </div>
       </Shell>
     );
@@ -107,9 +98,8 @@ export default function Join() {
   if (!config) {
     return (
       <Shell>
-        <div className="bg-white rounded-2xl shadow-card border border-ink-200/70 p-8 text-center">
-          <div className="w-6 h-6 mx-auto rounded-full border-2 border-ink-200 border-t-brand-500 animate-spin" />
-          <p className="text-sm text-ink-400 mt-3">Loading…</p>
+        <div className="bg-surface border border-line rounded-[22px] shadow-card p-10 text-center">
+          <div className="w-6 h-6 mx-auto rounded-full border-2 border-line border-t-espresso animate-spin" />
         </div>
       </Shell>
     );
@@ -117,106 +107,96 @@ export default function Join() {
 
   const needsOtp = config.policy.requireOtp;
   const inputCls =
-    'w-full px-4 py-3 rounded-xl border border-ink-200 bg-white text-[15px] text-ink-800 placeholder-ink-400 transition focus:border-brand-400';
+    'w-full px-4 py-3.5 rounded-[11px] border border-line-input bg-surface-sunken text-[15px] text-ink placeholder-muted-3 transition-colors';
+  const customer = config.organization?.terminology?.customer || 'Customer';
 
   return (
-    <Shell>
-      {/* Org identity */}
-      <div className="flex items-center gap-3 mb-5 animate-rise">
-        <span
-          className="w-11 h-11 rounded-xl grid place-items-center text-white font-bold text-lg shadow-sm shrink-0"
-          style={{ background: accent }}
-        >
-          {config.organization.name.slice(0, 1)}
-        </span>
-        <div className="min-w-0">
-          <p className="font-semibold text-ink-900 truncate">{config.organization.name}</p>
-          <p className="text-sm text-ink-500 truncate">{config.branch.name}</p>
-        </div>
-      </div>
-
-      <form onSubmit={submit} className="bg-white rounded-2xl shadow-card border border-ink-200/70 p-6 sm:p-7 animate-rise" style={{ animationDelay: '60ms' }}>
-        <h1 className="text-xl font-semibold tracking-tight text-ink-900 mb-1">
+    <Shell org={config.organization.name} branch={config.branch.name}>
+      <form
+        onSubmit={submit}
+        className="bg-surface border border-line rounded-[22px] shadow-card p-6 sm:p-7 animate-rise"
+        style={{ animationDelay: '60ms' }}
+      >
+        <h1 className="text-[26px] leading-tight font-bold tracking-[-.03em] text-ink">
           {config.area ? `Join the ${config.area} queue` : 'Join the queue'}
         </h1>
-        <p className="text-sm text-ink-500 mb-6">Get your place in line — we'll keep you updated live.</p>
+        <p className="text-[14px] text-muted mt-2 mb-6">
+          Take your place, then wait wherever you like — we'll tell you when you're up.
+        </p>
 
-        {/* Service picker: tappable cards (hidden when the area has just one) */}
-        {config.departments.length > 1 && <p className="text-[13px] font-medium text-ink-600 mb-2">Choose a service</p>}
-        <div className={`grid gap-2 mb-6 ${config.departments.length === 1 ? 'hidden' : ''}`}>
-          {config.departments.map((s) => {
-            const active = departmentId === s._id;
-            return (
-              <button
-                type="button"
-                key={s._id}
-                onClick={() => setDepartmentId(s._id)}
-                className={`flex items-center justify-between px-4 py-3 rounded-xl border text-left transition ${
-                  active ? 'border-transparent ring-2' : 'border-ink-200 hover:border-ink-300'
-                }`}
-                style={active ? { '--tw-ring-color': accent, background: `${accent}0d` } : undefined}
-              >
-                <span className="flex items-center gap-3">
-                  <span
-                    className={`w-8 h-8 rounded-lg grid place-items-center text-xs font-bold ${active ? 'text-white' : 'text-ink-500 bg-ink-100'}`}
-                    style={active ? { background: accent } : undefined}
+        {config.departments.length > 1 && (
+          <>
+            <p className="font-mono text-[10px] tracking-[.18em] uppercase text-muted-3 mb-2.5">
+              What are you here for?
+            </p>
+            <div className="grid gap-2 mb-6">
+              {config.departments.map((d) => {
+                const active = departmentId === d._id;
+                return (
+                  <button
+                    type="button"
+                    key={d._id}
+                    onClick={() => setDepartmentId(d._id)}
+                    className={`flex items-center justify-between px-4 py-3.5 rounded-[13px] border text-left transition-all ${
+                      active
+                        ? 'bg-espresso border-espresso text-paper'
+                        : 'bg-surface-sunken border-line-input hover:border-line-strong'
+                    }`}
                   >
-                    {s.tokenPrefix}
-                  </span>
-                  <span className={`text-[15px] font-medium ${active ? 'text-ink-900' : 'text-ink-700'}`}>{s.name}</span>
-                </span>
-                <span
-                  className={`w-[18px] h-[18px] rounded-full border-2 grid place-items-center ${active ? 'border-transparent' : 'border-ink-300'}`}
-                  style={active ? { background: accent } : undefined}
-                >
-                  {active && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+                    <span className="flex items-center gap-3">
+                      <span
+                        className={`w-8 h-8 rounded-[9px] grid place-items-center font-mono text-[12px] font-semibold ${
+                          active ? 'bg-paper/15 text-paper' : 'bg-espresso-tint text-espresso'
+                        }`}
+                      >
+                        {d.tokenPrefix}
+                      </span>
+                      <span className="text-[15px] font-semibold">{d.name}</span>
+                    </span>
+                    <span className={`w-[18px] h-[18px] rounded-full border-2 grid place-items-center ${
+                      active ? 'border-paper' : 'border-line-strong'
+                    }`}>
+                      {active && <span className="w-1.5 h-1.5 rounded-full bg-paper" />}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
 
         <div className="grid gap-4">
-          <label className="grid gap-1.5">
-            <span className="text-[13px] font-medium text-ink-600">Your name</span>
+          <label className="grid gap-2">
+            <span className="font-mono text-[10px] tracking-[.18em] uppercase text-muted-3">Your name</span>
             <input required className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" />
           </label>
 
-          <label className="grid gap-1.5">
-            <span className="text-[13px] font-medium text-ink-600">
-              Mobile number{' '}
-              {needsOtp ? <span style={{ color: accent }}>· verification required</span> : <span className="text-ink-400">· for updates</span>}
+          <label className="grid gap-2">
+            <span className="font-mono text-[10px] tracking-[.18em] uppercase text-muted-3">
+              Mobile {needsOtp ? '· verification required' : '· for updates'}
             </span>
             <input
-              className={inputCls}
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="+1 555 012 3456"
-              required={needsOtp}
-              inputMode="tel"
+              className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)}
+              placeholder="+1 555 012 3456" required={needsOtp} inputMode="tel"
             />
           </label>
 
           {needsOtp && (
             <div className="grid gap-2">
               {!otpSent ? (
-                <button
-                  type="button"
-                  onClick={requestOtp}
-                  disabled={!phone}
-                  className="px-4 py-2.5 rounded-xl border text-sm font-medium transition disabled:opacity-40"
-                  style={{ borderColor: accent, color: accent }}
-                >
+                <button type="button" onClick={requestOtp} disabled={!phone}
+                  className="px-4 py-3 rounded-[11px] border border-clay-tint-border bg-clay-tint text-clay-ink text-[14px] font-semibold disabled:opacity-40">
                   Send verification code
                 </button>
               ) : (
-                <label className="grid gap-1.5">
-                  <span className="text-[13px] font-medium text-ink-600">Enter the 6-digit code</span>
-                  <input className={`${inputCls} tracking-[0.35em] text-center font-semibold`} value={otp} onChange={(e) => setOtp(e.target.value)} inputMode="numeric" maxLength={6} />
+                <label className="grid gap-2">
+                  <span className="font-mono text-[10px] tracking-[.18em] uppercase text-muted-3">
+                    Enter the 6-digit code
+                  </span>
+                  <input className={`${inputCls} font-mono tracking-[.35em] text-center`} value={otp}
+                    onChange={(e) => setOtp(e.target.value)} inputMode="numeric" maxLength={6} />
                   {devCode && (
-                    <span className="text-xs text-ink-400">
-                      Demo code: <b className="text-ink-600">{devCode}</b>
-                    </span>
+                    <span className="font-mono text-[11px] text-muted-3">Demo code: <b className="text-muted">{devCode}</b></span>
                   )}
                 </label>
               )}
@@ -224,41 +204,54 @@ export default function Join() {
           )}
 
           {config.policy.requireGeofence && (
-            <p className="text-xs text-ink-400 leading-relaxed">
+            <p className="text-[12px] text-muted-3 leading-relaxed">
               This venue asks you to confirm you're on-site — your browser will request your location once.
             </p>
           )}
 
-          {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-2.5">{error}</p>}
+          {error && (
+            <p className="text-[14px] text-clay-ink bg-clay-tint border border-clay-tint-border rounded-[11px] px-4 py-3">
+              {error}
+            </p>
+          )}
 
           <button
             type="submit"
             disabled={submitting || (needsOtp && !otp)}
-            className="w-full py-3.5 rounded-xl text-white text-[15px] font-semibold transition shadow-sm disabled:opacity-50 active:scale-[.99]"
-            style={{ background: accent }}
+            className="w-full py-4 rounded-[13px] bg-espresso hover:bg-espresso-hover text-paper text-[15px] font-semibold transition-colors disabled:opacity-45 active:scale-[.99]"
           >
-            {submitting ? 'Getting your spot…' : 'Get my spot in line'}
+            {submitting ? 'Getting your place…' : 'Get my place in line →'}
           </button>
         </div>
       </form>
 
-      <Footer />
+      <p className="font-mono text-[10px] tracking-[.2em] uppercase text-muted-3 text-center mt-6">
+        no app · no account · keep your place from your seat
+      </p>
     </Shell>
   );
 }
 
-function Shell({ children }) {
+function Shell({ children, org, branch }) {
   return (
-    <div className="min-h-screen bg-ink-50 flex flex-col items-center px-4 py-8 sm:justify-center">
-      <div className="w-full max-w-md">{children}</div>
+    <div className="relative min-h-screen bg-paper flex flex-col items-center px-5 py-10 sm:justify-center">
+      <div className="absolute inset-0 paper-grid pointer-events-none" />
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{ background: 'radial-gradient(70% 50% at 50% 28%, #FFFDF8, transparent 70%)' }}
+      />
+      <div className="relative w-full max-w-[440px]">
+        <div className="flex items-center gap-3 mb-5 animate-rise">
+          <Logo size="badge" />
+          {org && (
+            <div className="min-w-0">
+              <p className="font-bold text-ink truncate">{org}</p>
+              <p className="font-mono text-[10px] tracking-[.18em] uppercase text-muted-3 truncate">{branch}</p>
+            </div>
+          )}
+        </div>
+        {children}
+      </div>
     </div>
-  );
-}
-
-function Footer() {
-  return (
-    <p className="text-center text-xs text-ink-400 mt-6">
-      Powered by <span className="font-semibold text-ink-500">QueueOS</span> · no app required
-    </p>
   );
 }
