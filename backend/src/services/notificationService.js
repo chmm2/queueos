@@ -8,13 +8,29 @@ const { sendMail, templates } = require('./emailService');
  * channels are both configured AND have a recipient, records every attempt
  * (outbox pattern), and never lets a slow/failing provider block the queue.
  *
- * WhatsApp + SMS go through Twilio's REST API (no SDK needed — just an
- * authenticated POST). Set these env vars to turn them on:
- *   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN
- *   TWILIO_SMS_FROM        e.g. +14155551234
- *   TWILIO_WHATSAPP_FROM   e.g. whatsapp:+14155238886
- * If they're unset, those channels are simply skipped (logged), so the app
- * runs fine out of the box and lights up the moment credentials are added.
+ * SMS goes through Twilio's REST API (no SDK needed — just an authenticated
+ * POST). Set these env vars to turn it on:
+ *   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_SMS_FROM  e.g. +14155551234
+ *
+ * WhatsApp has two free providers, tried in this order — use whichever one
+ * is actually available to you:
+ *
+ * 1. Meta's WhatsApp Cloud API — 1,000 free conversations/month, no card.
+ *    WHATSAPP_CLOUD_TOKEN, WHATSAPP_CLOUD_PHONE_ID from developers.facebook.com
+ *    → your App → WhatsApp → API Setup. Gated by the country registered on
+ *    your Meta Business Portfolio — not available everywhere, and there's no
+ *    workaround from the code side if yours isn't supported.
+ * 2. Twilio's WhatsApp Sandbox — permanently free, no business verification,
+ *    available wherever Twilio operates (effectively worldwide). Reuses
+ *    TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN (same as SMS) plus
+ *    TWILIO_WHATSAPP_FROM (the shared sandbox number, "whatsapp:+14155238886").
+ *    The tradeoff: each recipient must first message the sandbox number with
+ *    a one-time join code (shown in the Twilio console) before they can
+ *    receive anything — a per-tester opt-in, same practical shape as Meta's
+ *    developer-mode restriction.
+ *
+ * If none are set, WhatsApp is simply skipped (logged), so the app runs fine
+ * out of the box and lights up the moment either provider is configured.
  */
 
 // ---- Per-event content. `text` is used for WhatsApp/SMS; `email` for email.
@@ -40,7 +56,7 @@ const EVENTS = {
   },
 };
 
-// ---- Twilio transport (shared by SMS + WhatsApp) ----------------------------
+// ---- Twilio transport (SMS) --------------------------------------------------
 async function twilioSend({ to, from, body }) {
   const sid = process.env.TWILIO_ACCOUNT_SID;
   const auth = process.env.TWILIO_AUTH_TOKEN;
@@ -53,12 +69,45 @@ async function twilioSend({ to, from, body }) {
   return { messageId: res.data.sid };
 }
 
+/**
+ * WhatsApp Cloud API transport — one authenticated POST, no SDK. `to` must be
+ * an E.164 number (e.g. "+14155551234", no "whatsapp:" prefix — that's a
+ * Twilio-ism, Meta doesn't use it).
+ */
+async function whatsappCloudSend({ to, body }) {
+  const phoneId = process.env.WHATSAPP_CLOUD_PHONE_ID;
+  const token = process.env.WHATSAPP_CLOUD_TOKEN;
+  const res = await axios.post(
+    `https://graph.facebook.com/v21.0/${phoneId}/messages`,
+    { messaging_product: 'whatsapp', to: to.replace(/[^\d+]/g, ''), type: 'text', text: { body } },
+    { headers: { Authorization: `Bearer ${token}` }, timeout: 5000 }
+  );
+  return { messageId: res.data.messages?.[0]?.id };
+}
+
+/**
+ * Try Meta's Cloud API first, then Twilio's Sandbox, then give up. Shared by
+ * the notify() fan-out and otpService.js — an OTP is just a WhatsApp message,
+ * same transport, same fallback order. Returns null (not a throw) when
+ * neither provider is configured, so callers can fall back to their own
+ * dev-mode behaviour.
+ */
+async function sendWhatsapp(phone, body) {
+  if (process.env.WHATSAPP_CLOUD_TOKEN && process.env.WHATSAPP_CLOUD_PHONE_ID) {
+    return whatsappCloudSend({ to: phone, body });
+  }
+  const from = process.env.TWILIO_WHATSAPP_FROM;
+  if (process.env.TWILIO_ACCOUNT_SID && from) {
+    return twilioSend({ to: `whatsapp:${phone}`, from, body });
+  }
+  return null;
+}
+
 // ---- Channel adapters. Each returns null (skip) when not configured. --------
 const adapters = {
   whatsapp: async (phone, content) => {
-    const from = process.env.TWILIO_WHATSAPP_FROM;
-    if (!process.env.TWILIO_ACCOUNT_SID || !from || !content.text) return null;
-    return twilioSend({ to: `whatsapp:${phone}`, from, body: content.text });
+    if (!content.text) return null;
+    return sendWhatsapp(phone, content.text);
   },
   sms: async (phone, content) => {
     const from = process.env.TWILIO_SMS_FROM;
@@ -115,4 +164,4 @@ async function notify(token, event) {
   );
 }
 
-module.exports = { notify, EVENTS };
+module.exports = { notify, EVENTS, sendWhatsapp };

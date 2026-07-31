@@ -191,12 +191,19 @@ Analytics page's **Smart ETA** panel.
 ## Notifications (email · WhatsApp · SMS)
 
 One event fans out to every configured channel — a customer gets "you joined",
-"it's your turn", and "missed" messages. Email works via SMTP; **WhatsApp and
-SMS work via Twilio** — set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`,
-`TWILIO_SMS_FROM`, `TWILIO_WHATSAPP_FROM` and those channels light up
-automatically (they're skipped, not errored, when unset). Every send is
-recorded in a `Notification` outbox. Adding a new provider is a new adapter in
-`notificationService.js`, not a change to any caller.
+"it's your turn", and "missed" messages. Email works via SMTP; **SMS works via
+Twilio** (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_SMS_FROM`).
+**WhatsApp tries two free providers in order**: Meta's WhatsApp Cloud API
+(`WHATSAPP_CLOUD_TOKEN`, `WHATSAPP_CLOUD_PHONE_ID` — 1,000 conversations/month,
+no card, but gated by your Meta Business Portfolio's country) falling back to
+Twilio's WhatsApp Sandbox (`TWILIO_WHATSAPP_FROM` alongside the SMS Twilio
+creds — permanently free and available worldwide, but each recipient must
+first opt in with a join code). All channels are skipped, not errored, when
+unset. The phone OTP on the public join flow rides the same WhatsApp
+transport (`otpService.js`), falling back to a logged/dev-mode code when
+neither provider is configured. Every send is recorded in a `Notification`
+outbox. Adding a new provider is a new adapter in `notificationService.js`,
+not a change to any caller.
 
 ## Configuration = every industry, no code changes
 

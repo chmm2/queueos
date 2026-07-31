@@ -46,10 +46,13 @@ services:
       PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:8080}
       RECALL_WINDOW_SECONDS: 300
       NODE_ENV: production
-      # WhatsApp / SMS (optional) — set these to enable Twilio messaging.
+      # SMS (optional) — set these to enable Twilio messaging.
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
       TWILIO_SMS_FROM: ${TWILIO_SMS_FROM:-}
+      # WhatsApp + OTP delivery (optional) — Meta Cloud API, else Twilio Sandbox.
+      WHATSAPP_CLOUD_TOKEN: ${WHATSAPP_CLOUD_TOKEN:-}
+      WHATSAPP_CLOUD_PHONE_ID: ${WHATSAPP_CLOUD_PHONE_ID:-}
       TWILIO_WHATSAPP_FROM: ${TWILIO_WHATSAPP_FROM:-}
     ports:
       - "5000:5000"
