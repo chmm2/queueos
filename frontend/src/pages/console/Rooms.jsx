@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import api from '../../api/client';
 import { toast } from '../../store/toastStore';
 import {
@@ -15,6 +15,7 @@ import {
  */
 export default function Rooms() {
   const { branchId } = useParams();
+  const [params, setParams] = useSearchParams();
   const [rooms, setRooms] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [showNew, setShowNew] = useState(false);
@@ -61,11 +62,17 @@ export default function Rooms() {
       departments: f.departments.includes(id) ? f.departments.filter((x) => x !== id) : [...f.departments, id],
     }));
 
+  // ?room=<id> narrows the page to one room — what the floor plan's
+  // "Manage counters" opens. An id that no longer exists falls back to every room.
+  const onlyId = params.get('room');
+  const focused = onlyId ? rooms.find((r) => r._id === onlyId) : null;
+  const visible = focused ? [focused] : rooms;
+
   return (
     <div>
       <PageHeader
         eyebrow="Branch control"
-        title="The floor, mapped."
+        title={focused ? focused.name : 'The floor, mapped.'}
         description="Each room is a physical space with its own screen and QR. Counters are the desks inside it — and each one is its own login."
         actions={
           <button className={btn.primary} onClick={() => setShowNew((s) => !s)}>
@@ -73,6 +80,13 @@ export default function Rooms() {
           </button>
         }
       />
+
+      {focused && (
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-6 -mt-2">
+          <Link to={`/branches/${branchId}/floor-plan?room=${focused._id}`} className={btn.ghost}>← Back to the floor plan</Link>
+          <button type="button" onClick={() => setParams({})} className={btn.ghost}>Show all rooms</button>
+        </div>
+      )}
 
       {showNew && (
         <Card className="mb-6 animate-rise-fast">
@@ -108,7 +122,7 @@ export default function Rooms() {
       )}
 
       <div className="space-y-5">
-        {rooms.map((room, i) => (
+        {visible.map((room, i) => (
           <RoomCard
             key={room._id}
             room={room}

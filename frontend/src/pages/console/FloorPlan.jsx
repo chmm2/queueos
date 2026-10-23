@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import api from '../../api/client';
 import { toast } from '../../store/toastStore';
 import { PageHeader, Card, Badge, MicroLabel, EmptyState, STATUS_TONE, btn, field } from '../../components/ui';
@@ -50,11 +50,12 @@ const COUNTER_DOT = { open: 'bg-success', paused: 'bg-warning-ink', closed: 'bg-
 
 export default function FloorPlan() {
   const { branchId } = useParams();
+  const [params] = useSearchParams();
   const [rooms, setRooms] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [floor, setFloor] = useState(FALLBACK_FLOOR);
   const [tokens, setTokens] = useState([]);
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedId, setSelectedId] = useState(params.get('room')); // ?room= comes back from Rooms & Counters
   const [draft, setDraft] = useState(null); // the rectangle being dragged right now
   const [dropId, setDropId] = useState(null); // room a department chip is hovering over
   const [loaded, setLoaded] = useState(false);
@@ -570,7 +571,7 @@ function RoomPanel({
         <div className="grid gap-2 pt-1">
           <a href={`/board/${branchId}?room=${room._id}`} target="_blank" rel="noreferrer" className={btn.secondary}>Open waiting screen ↗</a>
           <Link to={`/branches/${branchId}/displays?room=${room._id}`} className={btn.secondary}>Join QR code</Link>
-          <Link to={`/branches/${branchId}/rooms`} className={btn.secondary}>Manage counters</Link>
+          <Link to={`/branches/${branchId}/rooms?room=${room._id}`} className={btn.secondary}>Manage counters</Link>
           <button onClick={onRemove} className={btn.danger}>Remove room</button>
         </div>
       </Card>
