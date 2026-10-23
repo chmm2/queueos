@@ -5,6 +5,7 @@ const Department = require('../models/Department');
 const Counter = require('../models/Counter');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requireOrg, scoped, assertSameOrg } = require('../middleware/tenant');
+const { FLOOR, sanitizeLayout } = require('../utils/floorplan');
 
 const router = express.Router();
 router.use(authenticate, requireOrg);
@@ -36,6 +37,7 @@ router.get('/branch/:branchId', async (req, res) => {
   }, {});
 
   res.json({
+    floor: FLOOR, // grid size the floor-plan view draws on
     rooms: rooms.map((r) => ({ ...r.toObject(), counters: byRoom[String(r._id)] || [] })),
   });
 });
@@ -58,7 +60,12 @@ router.post('/', authorize('Admin'), async (req, res) => {
     }
   }
 
-  const room = await Room.create({ organization: req.orgId, branch, name, code, departments });
+  const layout = req.body.layout === undefined ? null : sanitizeLayout(req.body.layout);
+  if (req.body.layout !== undefined && !layout) {
+    return res.status(400).json({ message: 'layout must be { x, y, w, h } in grid cells' });
+  }
+
+  const room = await Room.create({ organization: req.orgId, branch, name, code, departments, layout });
   res.status(201).json({ room });
 });
 
@@ -90,6 +97,13 @@ router.patch('/:id', authorize('Admin'), async (req, res) => {
   }
   if (req.body.name !== undefined) room.name = req.body.name;
   if (req.body.code !== undefined) room.code = req.body.code;
+  if (req.body.layout !== undefined) {
+    const layout = sanitizeLayout(req.body.layout);
+    if (!layout) {
+      return res.status(400).json({ message: 'layout must be { x, y, w, h } in grid cells' });
+    }
+    room.layout = layout;
+  }
 
   await room.save();
   res.json({ room });

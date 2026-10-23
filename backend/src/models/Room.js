@@ -24,6 +24,21 @@ const roomSchema = new mongoose.Schema(
     // Which queues are served in this physical space.
     departments: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Department' }],
 
+    // Where this room sits on the branch's floor plan, in grid cells (see
+    // utils/floorplan.js). Purely visual — null until the room is first placed.
+    layout: {
+      type: new mongoose.Schema(
+        {
+          x: { type: Number, required: true },
+          y: { type: Number, required: true },
+          w: { type: Number, required: true },
+          h: { type: Number, required: true },
+        },
+        { _id: false }
+      ),
+      default: null,
+    },
+
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }

@@ -10,6 +10,7 @@ import Branches from './pages/console/Branches';
 import BranchOverview from './pages/console/BranchOverview';
 import Departments from './pages/console/Departments';
 import Rooms from './pages/console/Rooms';
+import FloorPlan from './pages/console/FloorPlan';
 import Analytics from './pages/console/Analytics';
 import Displays from './pages/console/Displays';
 import Administrators from './pages/console/Administrators';
@@ -80,6 +81,7 @@ export default function App() {
           <Route path="/branches/:branchId" element={<BranchOverview />} />
           <Route path="/branches/:branchId/departments" element={<Departments />} />
           <Route path="/branches/:branchId/rooms" element={<Rooms />} />
+          <Route path="/branches/:branchId/floor-plan" element={<FloorPlan />} />
           <Route path="/branches/:branchId/analytics" element={<Analytics />} />
           <Route path="/branches/:branchId/displays" element={<Displays />} />
         </Route>

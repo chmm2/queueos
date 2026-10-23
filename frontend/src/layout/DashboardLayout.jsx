@@ -53,6 +53,7 @@ export default function DashboardLayout() {
           <NavGroup label={`Branch — ${branch.name}`}>
             <NavRow to={`/branches/${branchId}`} end>Overview</NavRow>
             <NavRow to={`/branches/${branchId}/departments`}>Departments</NavRow>
+            <NavRow to={`/branches/${branchId}/floor-plan`}>Floor plan</NavRow>
             <NavRow to={`/branches/${branchId}/rooms`}>Rooms &amp; Counters</NavRow>
             <NavRow to={`/branches/${branchId}/analytics`}>Analytics</NavRow>
             <NavRow to={`/branches/${branchId}/displays`}>Displays &amp; QR</NavRow>
