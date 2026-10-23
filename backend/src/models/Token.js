@@ -10,7 +10,16 @@ const STATUSES = [
   'completed',
   'missed',
   'cancelled',
+  // Sent onward to another queue by a counter. Final for THIS token — the
+  // visit continues as a new token, linked through `transferredTo`.
+  'transferred',
 ];
+
+// Statuses meaning "this stop was served" — what wait/service statistics and
+// the ETA model should learn from. A token sent onward after being served is
+// still a real, finished stop; the rows without `startedAt` (sent on before
+// anyone served them) drop out of those queries on their own.
+const SERVED_STATUSES = ['completed', 'transferred'];
 
 const SOURCES = ['walk-in', 'online'];
 
@@ -27,6 +36,14 @@ const tokenSchema = new mongoose.Schema(
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }, // null for anonymous walk-ins
 
     tokenNumber: { type: String, required: true }, // e.g. "A-014"
+
+    // A visit is one person's trip through the branch. Each stop is its own
+    // token (own number, own place in line, own timings); `visit` ties them
+    // together and equals the FIRST token's _id — the id the patient's link
+    // was issued with, which is why that link keeps working after a transfer.
+    visit: { type: mongoose.Schema.Types.ObjectId, ref: 'Token', default: null, index: true },
+    // Set when a counter sends the patient on: the token that carries the visit forward.
+    transferredTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Token', default: null },
 
     // Denormalized customer contact for the public (accountless) join flow.
     customerName: { type: String, trim: true, default: null },
@@ -98,4 +115,5 @@ tokenSchema.index({ department: 1, status: 1, isPriority: -1, orderKey: 1 });
 
 module.exports = mongoose.model('Token', tokenSchema);
 module.exports.STATUSES = STATUSES;
+module.exports.SERVED_STATUSES = SERVED_STATUSES;
 module.exports.SOURCES = SOURCES;

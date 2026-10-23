@@ -31,8 +31,20 @@ describe('token state machine — legality', () => {
     expect(canTransition('completed', 'waiting')).toBe(false);
   });
 
+  test('a patient can be sent onward from any state a counter has them in', () => {
+    for (const s of ['waiting', 'serving', 'held', 'skipped']) {
+      expect(canTransition(s, 'transferred')).toBe(true);
+    }
+  });
+
+  test('only a token that is still live can be sent onward', () => {
+    for (const s of ['completed', 'missed', 'cancelled', 'transferred']) {
+      expect(canTransition(s, 'transferred')).toBe(false);
+    }
+  });
+
   test('terminal states have no outgoing transitions', () => {
-    for (const s of ['completed', 'missed', 'cancelled']) {
+    for (const s of ['completed', 'missed', 'cancelled', 'transferred']) {
       expect(TRANSITIONS[s]).toEqual([]);
     }
   });

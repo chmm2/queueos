@@ -17,16 +17,20 @@ const AuditLog = require('../models/AuditLog');
  * consistent — a token can never jump straight from "waiting" to
  * "completed", for example.
  */
+// `transferred` is reachable from any state where a counter has the patient in
+// hand. It is the end of THIS token, not of the visit: the continuation is a
+// fresh token (services/visitService.js).
 const TRANSITIONS = {
-  waiting: ['serving', 'cancelled', 'missed'],
+  waiting: ['serving', 'cancelled', 'missed', 'transferred'],
   // A no-show sends them straight back to `waiting` (further down the line) or
   // to `missed` once they've used up their chances — no manual recall needed.
-  serving: ['held', 'skipped', 'completed', 'waiting', 'missed'],
-  held: ['serving', 'waiting', 'missed'],
-  skipped: ['serving', 'waiting', 'missed'],
+  serving: ['held', 'skipped', 'completed', 'waiting', 'missed', 'transferred'],
+  held: ['serving', 'waiting', 'missed', 'transferred'],
+  skipped: ['serving', 'waiting', 'missed', 'transferred'],
   completed: [],
   missed: [],
   cancelled: [],
+  transferred: [],
 };
 
 class InvalidTransitionError extends Error {
@@ -87,6 +91,10 @@ async function transition(tokenId, toStatus, actorUserId = null, metadata = {}) 
       token.recallDeadline = null;
       break;
     case 'missed':
+      token.recallDeadline = null;
+      break;
+    case 'transferred':
+      token.completedAt = now; // this stop ends here; the visit carries on elsewhere
       token.recallDeadline = null;
       break;
     default:

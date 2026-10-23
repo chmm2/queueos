@@ -106,6 +106,7 @@ export const STATUS_TONE = {
   completed: 'success',
   missed: 'clay',
   cancelled: 'neutral',
+  transferred: 'neutral',
   open: 'success',
   paused: 'warning',
   closed: 'neutral',

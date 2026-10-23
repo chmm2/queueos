@@ -1,5 +1,7 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const Room = require('../models/Room');
+const Token = require('../models/Token');
 const Branch = require('../models/Branch');
 const Department = require('../models/Department');
 const Counter = require('../models/Counter');
@@ -39,6 +41,46 @@ router.get('/branch/:branchId', async (req, res) => {
   res.json({
     floor: FLOOR, // grid size the floor-plan view draws on
     rooms: rooms.map((r) => ({ ...r.toObject(), counters: byRoom[String(r._id)] || [] })),
+  });
+});
+
+/**
+ * Everywhere a patient could be sent from here: every active room in the
+ * branch, with the departments it serves and how many are waiting in each.
+ * Deliberately lean — a counter is picking a destination, not managing rooms,
+ * so it gets names and queue lengths, not other counters' logins.
+ */
+router.get('/branch/:branchId/destinations', async (req, res) => {
+  if (!(await ownsBranch(req, req.params.branchId))) {
+    return res.status(404).json({ message: 'Branch not found' });
+  }
+  const rooms = await Room.find(scoped(req, { branch: req.params.branchId, isActive: true }))
+    .populate({ path: 'departments', select: 'name tokenPrefix', match: { isActive: true } })
+    .sort({ name: 1 });
+
+  const deptIds = rooms.flatMap((r) => (r.departments || []).map((d) => d._id));
+  const counts = await Token.aggregate([
+    {
+      $match: {
+        organization: new mongoose.Types.ObjectId(req.orgId),
+        branch: new mongoose.Types.ObjectId(req.params.branchId),
+        status: 'waiting',
+        department: { $in: deptIds },
+      },
+    },
+    { $group: { _id: '$department', n: { $sum: 1 } } },
+  ]);
+  const waiting = Object.fromEntries(counts.map((c) => [String(c._id), c.n]));
+
+  res.json({
+    rooms: rooms.map((r) => ({
+      _id: r._id,
+      name: r.name,
+      code: r.code,
+      departments: (r.departments || []).map((d) => ({
+        _id: d._id, name: d.name, waiting: waiting[String(d._id)] || 0,
+      })),
+    })),
   });
 });
 

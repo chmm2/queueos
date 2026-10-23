@@ -16,6 +16,7 @@ const STATUS_LABEL = {
   completed: 'All done',
   missed: 'Missed',
   cancelled: 'Cancelled',
+  transferred: 'Sent onward',
 };
 
 function formatEta(seconds) {
@@ -46,6 +47,14 @@ export default function TrackToken() {
   const load = useCallback(async () => {
     try {
       const { data } = await publicApi.get(`/token/${tokenId}`, { headers: { 'x-session': session } });
+      // Sent to another queue? The link is the same but the token is new, so
+      // the progress ring should start from where they are in THIS line.
+      const numKey = `qtoken:${tokenId}:num`;
+      const previous = localStorage.getItem(numKey);
+      if (previous && previous !== data.token.tokenNumber && data.token.status === 'waiting') {
+        localStorage.setItem(`qtoken:${tokenId}:startpos`, String(data.token.position));
+      }
+      localStorage.setItem(numKey, data.token.tokenNumber);
       setToken(data.token);
     } catch (err) {
       setError(err.response?.data?.message || 'Could not load your token.');
@@ -160,6 +169,33 @@ export default function TrackToken() {
           </>
         ) : (
           <p className="text-[14px] text-muted">This token is no longer active.</p>
+        )}
+
+        {token.stops?.length > 1 && (
+          <div className={`mt-6 pt-5 border-t text-left ${isTurn ? 'border-paper/15' : 'border-line'}`}>
+            <p className={`font-mono text-[10px] tracking-[.2em] uppercase mb-3 ${isTurn ? 'text-paper/50' : 'text-muted-3'}`}>
+              Your visit
+            </p>
+            <ol className="space-y-2.5">
+              {token.stops.map((s, i) => (
+                <li key={i} className="flex items-baseline justify-between gap-3">
+                  <span className={`text-[14px] truncate ${
+                    s.current
+                      ? `font-semibold ${isTurn ? 'text-paper' : 'text-ink'}`
+                      : isTurn ? 'text-paper/50' : 'text-muted-3'
+                  }`}>
+                    {s.department}
+                    {s.room && s.room !== s.department ? ` · ${s.room}` : ''}
+                  </span>
+                  <span className={`font-mono text-[12px] tnum shrink-0 ${
+                    s.current ? (isTurn ? 'text-paper/80' : 'text-muted-2') : isTurn ? 'text-paper/40' : 'text-muted-3'
+                  }`}>
+                    {s.tokenNumber} · {s.current ? STATUS_LABEL[s.status] : 'Done'}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </div>
         )}
 
         {active && (

@@ -37,7 +37,7 @@ function buildSample(t) {
 async function trainOrg(orgId) {
   const completed = await Token.find({
     organization: orgId,
-    status: 'completed',
+    status: { $in: Token.SERVED_STATUSES },
     'etaFeatures.queuePosition': { $ne: null },
     startedAt: { $ne: null },
   })
@@ -73,7 +73,7 @@ async function trainOrg(orgId) {
  */
 async function trainDueOrgs() {
   const counts = await Token.aggregate([
-    { $match: { status: 'completed', startedAt: { $ne: null }, 'etaFeatures.queuePosition': { $ne: null } } },
+    { $match: { status: { $in: Token.SERVED_STATUSES }, startedAt: { $ne: null }, 'etaFeatures.queuePosition': { $ne: null } } },
     { $group: { _id: '$organization', n: { $sum: 1 } } },
   ]);
 

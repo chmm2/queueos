@@ -30,6 +30,10 @@ async function issueToken({
   customerEmail = null,
   user = null,
   actorId = null,
+  // Set when this token continues an existing visit (a transfer): it joins the
+  // same visit and reuses the patient's session, so their link keeps working.
+  visit = null,
+  sessionId: existingSessionId = null,
 }) {
   const [branch, department] = await Promise.all([
     Branch.findById(branchId),
@@ -64,8 +68,9 @@ async function issueToken({
     openCounters,
   });
 
-  const sessionId = randomUUID();
+  const sessionId = existingSessionId || randomUUID();
   const token = await Token.create({
+    visit,
     organization,
     branch: branch._id,
     department: department._id,
@@ -86,6 +91,8 @@ async function issueToken({
 
   const sessionToken = signSession(token._id, sessionId);
   token.qrCode = await generateTokenQr(token, sessionToken);
+  // The first token of a visit IS the visit: its _id is what later stops point at.
+  if (!token.visit) token.visit = token._id;
   await token.save();
 
   await AuditLog.create({

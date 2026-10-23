@@ -10,6 +10,7 @@ const Token = require('../models/Token');
 const AuditLog = require('../models/AuditLog');
 const { verify } = require('../services/tokenService');
 const { issueToken } = require('../services/queueService');
+const { currentToken, visitStops } = require('../services/visitService');
 const { recalcDepartmentEtas } = require('../services/etaService');
 const { requestOtp, verifyOtp } = require('../services/otpService');
 const { emitQueueUpdate } = require('../sockets');
@@ -216,14 +217,19 @@ router.post(
 router.get('/token/:id', async (req, res, next) => {
   try {
     const session = sessionFromReq(req);
-    const token = await Token.findById(req.params.id)
+    // The link carries the id of the FIRST token of the visit. Authorise against
+    // that one, then answer about whichever stop the patient is at now, so a
+    // transfer never breaks the page they already have open.
+    const original = await Token.findById(req.params.id);
+    if (!original) return res.status(404).json({ message: 'Token not found' });
+    if (!session || session.token !== original._id.toString() || session.sid !== original.sessionId) {
+      return res.status(403).json({ message: 'Not authorized for this token' });
+    }
+    const current = await currentToken(original);
+    const token = await Token.findById(current._id)
       .populate('department', 'name')
       .populate('counter', 'name code')
       .populate('room', 'name');
-    if (!token) return res.status(404).json({ message: 'Token not found' });
-    if (!session || session.token !== token._id.toString() || session.sid !== token.sessionId) {
-      return res.status(403).json({ message: 'Not authorized for this token' });
-    }
 
     let position = 0;
     if (token.status === 'waiting') {
@@ -242,9 +248,22 @@ router.get('/token/:id', async (req, res, next) => {
       position += 1;
     }
 
+    // The whole trip so far, only when there is more than one stop to show.
+    const stopDocs = await visitStops(original);
+    const stops = stopDocs.length > 1
+      ? stopDocs.map((s) => ({
+          tokenNumber: s.tokenNumber,
+          department: s.department?.name || null,
+          room: s.room?.name || null,
+          status: s.status,
+          current: String(s._id) === String(token._id),
+        }))
+      : [];
+
     res.json({
       token: {
         id: token._id,
+        stops,
         tokenNumber: token.tokenNumber,
         status: token.status,
         department: token.department?.name,
@@ -266,11 +285,13 @@ router.get('/token/:id', async (req, res, next) => {
 router.post('/token/:id/cancel', async (req, res, next) => {
   try {
     const session = sessionFromReq(req);
-    const token = await Token.findById(req.params.id);
-    if (!token) return res.status(404).json({ message: 'Token not found' });
-    if (!session || session.token !== token._id.toString() || session.sid !== token.sessionId) {
+    const original = await Token.findById(req.params.id);
+    if (!original) return res.status(404).json({ message: 'Token not found' });
+    if (!session || session.token !== original._id.toString() || session.sid !== original.sessionId) {
       return res.status(403).json({ message: 'Not authorized for this token' });
     }
+    // Leaving means leaving wherever the visit is now, not the first stop.
+    const token = await currentToken(original);
     if (!['waiting', 'held', 'skipped'].includes(token.status)) {
       return res.status(409).json({ message: `Cannot cancel a token that is '${token.status}'` });
     }

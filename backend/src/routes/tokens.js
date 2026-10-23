@@ -10,6 +10,7 @@ const stateMachine = require('../services/tokenStateMachine');
 const { recalcDepartmentEtas, recalibrateDepartmentAvg } = require('../services/etaService');
 const { issueToken, callNext } = require('../services/queueService');
 const { recordNoShow } = require('../services/noShowService');
+const { transferToken } = require('../services/visitService');
 const { notify } = require('../services/notificationService');
 const { emitQueueUpdate } = require('../sockets');
 
@@ -74,16 +75,20 @@ router.post('/call-next', authorize('Counter'), async (req, res, next) => {
  * Shared handler for lifecycle transitions. A counter may only act on the
  * token it is currently serving.
  */
+// A counter may act on the token it is serving, or on one waiting in its own
+// room (so it can recall someone a colleague skipped).
+function canActOn(req, token) {
+  const myRoom = String(req.counter.room?._id || req.counter.room || '');
+  const isMine = String(token.counter || '') === String(req.counter._id);
+  const inMyRoom = myRoom && String(token.room || '') === myRoom;
+  return isMine || inMyRoom;
+}
+
 async function doTransition(req, res, toStatus) {
   const token = await Token.findById(req.params.id);
   if (!assertSameOrg(req, res, token)) return null;
 
-  // A counter may act on the token it is serving, or on one waiting in its own
-  // room (so it can recall someone a colleague skipped).
-  const myRoom = String(req.counter.room?._id || req.counter.room || '');
-  const isMine = String(token.counter || '') === String(req.counter._id);
-  const inMyRoom = myRoom && String(token.room || '') === myRoom;
-  if (!isMine && !inMyRoom) {
+  if (!canActOn(req, token)) {
     res.status(403).json({ message: 'That token belongs to another counter' });
     return null;
   }
@@ -213,48 +218,37 @@ router.patch('/:id/priority', authorize('Counter'), async (req, res, next) => {
   }
 });
 
-// Send a customer on to another department (e.g. Consultation -> Pharmacy).
+/**
+ * Send a patient on to any room in the branch.
+ *
+ * Body: { roomId, departmentId? } — departmentId is only needed when the room
+ * serves more than one. The old token ends and a NEW token (new id, new
+ * number, back of the destination line) continues the visit; the patient's
+ * existing link follows them there. See services/visitService.js.
+ */
 router.patch('/:id/transfer', authorize('Counter'), async (req, res, next) => {
   try {
-    const { departmentId } = req.body;
     const token = await Token.findById(req.params.id);
     if (!assertSameOrg(req, res, token)) return;
-    const department = await Department.findById(departmentId);
-    if (!assertSameOrg(req, res, department)) return;
+    if (!canActOn(req, token)) {
+      return res.status(403).json({ message: 'That token belongs to another counter' });
+    }
 
-    const fromDepartment = token.department;
-    if (token.counter) await Counter.findByIdAndUpdate(token.counter, { currentToken: null });
-
-    // Move them to a room that handles the destination department.
-    const Room = require('../models/Room');
-    const destRoom = await Room.findOne({
-      branch: token.branch, departments: department._id, isActive: true,
-    }).select('_id');
-
-    token.department = department._id;
-    token.room = destRoom?._id || null;
-    token.status = 'waiting';
-    token.counter = null;
-    token.calledAt = null;
-    token.startedAt = null;
-    await token.save();
-
-    await AuditLog.create({
+    const { from, to, department, room } = await transferToken({
+      token,
+      roomId: req.body.roomId,
+      departmentId: req.body.departmentId,
+      actorId: req.user._id,
       organization: req.orgId,
-      token: token._id,
-      branch: token.branch,
-      actor: req.user._id,
-      action: 'TOKEN_TRANSFERRED',
-      metadata: { from: fromDepartment, to: department._id },
     });
-
-    await Promise.all([
-      recalcDepartmentEtas(token.branch, fromDepartment),
-      recalcDepartmentEtas(token.branch, department._id),
-    ]);
-    emitQueueUpdate(token.branch, { type: 'transfer', tokenId: token._id });
-    res.json({ token });
+    res.json({
+      from: { _id: from._id, tokenNumber: from.tokenNumber },
+      token: to,
+      department: { _id: department._id, name: department.name },
+      room: room ? { _id: room._id, name: room.name } : null,
+    });
   } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ message: err.message });
     next(err);
   }
 });

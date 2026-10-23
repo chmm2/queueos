@@ -7,6 +7,7 @@ import { toast } from '../../store/toastStore';
 import { useTerms } from '../../lib/terms';
 import Toaster from '../../components/Toaster';
 import PriorityDialog from '../../components/PriorityDialog';
+import TransferDialog from '../../components/TransferDialog';
 import Logo from '../../components/Logo';
 import { Card, Badge, MicroLabel, EmptyState, STATUS_TONE, btn } from '../../components/ui';
 
@@ -27,6 +28,7 @@ export default function CounterConsole() {
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(new Date());
   const [priorityFor, setPriorityFor] = useState(null);
+  const [transferFor, setTransferFor] = useState(null);
 
   const branchId = counter?.branch;
 
@@ -115,6 +117,17 @@ export default function CounterConsole() {
       refresh();
     } catch (e) {
       toast.error(e.response?.data?.message || 'Could not grant priority.');
+    }
+  }
+
+  async function sendOnward({ roomId, departmentId }) {
+    try {
+      const { data } = await api.patch(`/tokens/${transferFor._id}/transfer`, { roomId, departmentId });
+      toast.success(`${data.from.tokenNumber} sent to ${data.department.name} as ${data.token.tokenNumber}`);
+      setTransferFor(null);
+      refresh();
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Could not send them on.');
     }
   }
 
@@ -218,6 +231,7 @@ export default function CounterConsole() {
                 )}
                 <div className="flex flex-wrap gap-2.5 mt-6">
                   <button onClick={() => act(serving._id, 'hold', serving.tokenNumber)} className={btn.secondary}>Hold</button>
+                  <button onClick={() => setTransferFor(serving)} className={btn.secondary}>Transfer</button>
                   <button onClick={() => markNoShow(serving._id)} className={btn.danger}>No-show</button>
                   <button onClick={() => act(serving._id, 'complete', serving.tokenNumber)} className={btn.primary}>Complete</button>
                 </div>
@@ -279,6 +293,7 @@ export default function CounterConsole() {
                       {(x.status === 'held' || x.status === 'skipped') && (
                         <button onClick={() => act(x._id, 'recall', x.tokenNumber)} className={btn.ghost}>Recall</button>
                       )}
+                      <button onClick={() => setTransferFor(x)} className={btn.ghost}>Transfer</button>
                     </div>
                   </div>
                   {x.isPriority && x.priorityReason && (
@@ -293,6 +308,14 @@ export default function CounterConsole() {
 
       {priorityFor && (
         <PriorityDialog token={priorityFor} onConfirm={grantPriority} onCancel={() => setPriorityFor(null)} />
+      )}
+      {transferFor && (
+        <TransferDialog
+          token={transferFor}
+          branchId={branchId}
+          onConfirm={sendOnward}
+          onCancel={() => setTransferFor(null)}
+        />
       )}
       <Toaster />
     </div>

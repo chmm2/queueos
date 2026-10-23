@@ -109,7 +109,7 @@ async function recalcBranchEtas(branchId) {
 async function recalibrateDepartmentAvg(departmentId) {
   if (!departmentId) return;
   const recent = await Token.find({
-    department: departmentId, status: 'completed', startedAt: { $ne: null }, completedAt: { $ne: null },
+    department: departmentId, status: { $in: Token.SERVED_STATUSES }, startedAt: { $ne: null }, completedAt: { $ne: null },
   })
     .sort({ completedAt: -1 })
     .limit(100)

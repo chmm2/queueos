@@ -18,7 +18,7 @@ router.get('/branch/:branchId/summary', authorize('Admin'), async (req, res) => 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const base = scoped(req, { branch: branchId });
 
-  const completed = await Token.find({ ...base, status: 'completed', completedAt: { $gte: since } });
+  const completed = await Token.find({ ...base, status: { $in: Token.SERVED_STATUSES }, startedAt: { $ne: null }, completedAt: { $gte: since } });
   const [missedCount, cancelledCount, totalIssued] = await Promise.all([
     Token.countDocuments({ ...base, status: 'missed', createdAt: { $gte: since } }),
     Token.countDocuments({ ...base, status: 'cancelled', createdAt: { $gte: since } }),
@@ -59,7 +59,7 @@ router.get('/branch/:branchId/departments', authorize('Admin'), async (req, res)
     departments.map(async (d) => {
       const [waiting, completedDocs] = await Promise.all([
         Token.countDocuments({ department: d._id, status: 'waiting' }),
-        Token.find({ department: d._id, status: 'completed', completedAt: { $gte: since } }).select('issuedAt startedAt'),
+        Token.find({ department: d._id, status: { $in: Token.SERVED_STATUSES }, startedAt: { $ne: null }, completedAt: { $gte: since } }).select('issuedAt startedAt'),
       ]);
       const avgWait = completedDocs.length
         ? Math.round(completedDocs.reduce((s, t) => s + (t.startedAt - t.issuedAt) / 1000, 0) / completedDocs.length)
@@ -75,7 +75,7 @@ router.get('/model', authorize('Admin'), async (req, res) => {
   const state = await ModelState.findOne({ organization: req.orgId });
   const readyCount = await Token.countDocuments({
     organization: req.orgId,
-    status: 'completed',
+    status: { $in: Token.SERVED_STATUSES },
     startedAt: { $ne: null },
     'etaFeatures.queuePosition': { $ne: null },
   });
